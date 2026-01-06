@@ -22,7 +22,8 @@ import {
   Navigation,
   Info,
   AlertCircle,
-  ClipboardList
+  ClipboardList,
+  Wallet
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -58,8 +59,8 @@ const App: React.FC = () => {
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [cefaneInput, setCefaneInput] = useState('');
+  const [cefaneBudget, setCefaneBudget] = useState('');
   const [isProcessingCefane, setIsProcessingCefane] = useState(false);
-  const [riderPos, setRiderPos] = useState<[number, number]>([5.6037, -0.1870]); // Start in Accra
   const [showCefaneConfirm, setShowCefaneConfirm] = useState(false);
 
   // Map Component Logic
@@ -118,11 +119,10 @@ const App: React.FC = () => {
     setIsProcessingCefane(true);
     
     try {
-      // Always use process.env.API_KEY directly for initializing GoogleGenAI.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `User request: "${cefaneInput}". Just confirm you understand.`,
+        contents: `User request: "${cefaneInput}". Budget: ${cefaneBudget || 'Not specified'}. Just confirm you understand.`,
       });
 
       const newOrder: Order = {
@@ -132,10 +132,12 @@ const App: React.FC = () => {
         date: new Date().toISOString(),
         total: 0,
         shoppingList: cefaneInput,
+        budgetLimit: cefaneBudget ? parseFloat(cefaneBudget) : undefined,
       };
       
       setActiveOrder(newOrder);
       setCefaneInput('');
+      setCefaneBudget('');
       setShowCefaneConfirm(false);
       setView('tracking');
     } catch (error) {
@@ -298,64 +300,116 @@ const App: React.FC = () => {
       )}
 
       {view === 'cefane' && (
-        <div className="p-5 flex flex-col h-full bg-white animate-fadeIn">
+        <div className="p-5 flex flex-col h-full bg-white animate-fadeIn pb-24 overflow-y-auto">
           <div className="flex items-center mb-6">
             <button onClick={() => setView('home')} className="p-2 -ml-2 mr-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
             <h2 className="text-2xl font-black text-gray-900 tracking-tight">Cefane Concierge</h2>
           </div>
           
-          <div className="flex-1 flex flex-col">
-            <div className="bg-orange-50 p-6 rounded-[32px] mb-6 border border-orange-100">
+          <div className="flex-1 flex flex-col space-y-6">
+            <div className="bg-orange-50 p-6 rounded-[32px] border border-orange-100">
               <h3 className="text-xl font-bold text-orange-900 mb-2">What's on your list?</h3>
               <p className="text-orange-700/70 text-sm">Tell us the items, the store, and any specific preferences.</p>
             </div>
 
-            <textarea 
-              placeholder="e.g., 'Go to Melcom and get a large frying pan, then stop by the bakery for 2 loaves of wheat bread...'"
-              className="w-full flex-1 bg-gray-50 rounded-[32px] p-6 text-gray-800 placeholder:text-gray-300 focus:ring-4 focus:ring-orange-100 focus:outline-none resize-none border-none text-lg"
-              value={cefaneInput}
-              onChange={(e) => setCefaneInput(e.target.value)}
-            />
+            <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+              <MapPin className="text-orange-600 w-5 h-5" />
+              <div>
+                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery To</p>
+                <p className="text-sm font-bold text-gray-800">Main Street, Accra</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Errand Details</label>
+              <textarea 
+                placeholder="e.g., 'Go to Melcom and get a large frying pan, then stop by the bakery for 2 loaves of wheat bread...'"
+                className="w-full min-h-[160px] bg-gray-50 rounded-[32px] p-6 text-gray-800 placeholder:text-gray-300 focus:ring-4 focus:ring-orange-100 focus:outline-none resize-none border-none text-lg"
+                value={cefaneInput}
+                onChange={(e) => setCefaneInput(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Optional Budget ($)</label>
+              <div className="relative">
+                <Wallet className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input 
+                  type="number" 
+                  placeholder="Enter max budget (e.g. 50)" 
+                  className="w-full bg-gray-50 rounded-2xl py-4 pl-14 pr-4 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold"
+                  value={cefaneBudget}
+                  onChange={(e) => setCefaneBudget(e.target.value)}
+                />
+              </div>
+            </div>
 
             <button 
               onClick={() => setShowCefaneConfirm(true)}
               disabled={!cefaneInput.trim() || isProcessingCefane}
               className={`mt-6 w-full py-5 rounded-2xl font-black text-white shadow-2xl flex items-center justify-center gap-2 transition-all active:scale-95 ${!cefaneInput.trim() ? 'bg-gray-200' : 'bg-orange-600 hover:bg-orange-700'}`}
             >
-              {isProcessingCefane ? "Processing..." : "Send Request"} <Send className="w-5 h-5" />
+              {isProcessingCefane ? "Processing..." : "Review Errand"} <ChevronRight className="w-5 h-5" />
             </button>
           </div>
         </div>
       )}
 
       {showCefaneConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white w-full rounded-[40px] p-8 shadow-2xl animate-scaleIn">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="text-orange-600 w-8 h-8" />
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+          <div className="bg-white w-full rounded-[48px] p-10 shadow-2xl animate-scaleIn max-h-[90vh] overflow-y-auto">
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-5">
+                <Package className="text-orange-600 w-10 h-10" />
               </div>
-              <h3 className="text-2xl font-black">Confirm Order</h3>
-              <p className="text-gray-500 text-sm mt-1">Review your errand request</p>
+              <h3 className="text-3xl font-black tracking-tight">Review Errand</h3>
+              <p className="text-gray-500 font-medium mt-1">Ready to send your request?</p>
             </div>
             
-            <div className="bg-gray-50 p-5 rounded-3xl mb-8 border border-gray-100">
-              <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-2">Request Details</h4>
-              <p className="text-gray-700 italic text-sm leading-relaxed">"{cefaneInput}"</p>
+            <div className="space-y-6">
+              <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100">
+                <div className="flex items-center gap-3 mb-3">
+                  <ClipboardList className="w-4 h-4 text-orange-600" />
+                  <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Shopping List</h4>
+                </div>
+                <p className="text-gray-800 font-medium text-sm leading-relaxed">"{cefaneInput}"</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Wallet className="w-4 h-4 text-green-600" />
+                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Budget</h4>
+                  </div>
+                  <p className="text-gray-900 font-black">{cefaneBudget ? `$${parseFloat(cefaneBudget).toFixed(2)}` : 'No Limit'}</p>
+                </div>
+                <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100">
+                  <div className="flex items-center gap-3 mb-2">
+                    <MapPin className="w-4 h-4 text-red-600" />
+                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Address</h4>
+                  </div>
+                  <p className="text-gray-900 font-black text-xs line-clamp-1">Main St, Accra</p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 flex gap-3">
+                <Info className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-orange-800 leading-tight">Your request will be sent to the admin for review. Once accepted, a rider will be assigned to fulfill your errand.</p>
+              </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="mt-10 flex flex-col gap-3">
               <button 
                 onClick={processCefaneRequest}
-                className="w-full py-4 bg-orange-600 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-transform"
+                className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-2"
               >
-                Confirm & Send
+                Confirm & Send Request <Send className="w-5 h-5" />
               </button>
               <button 
                 onClick={() => setShowCefaneConfirm(false)}
-                className="w-full py-4 text-gray-400 font-bold"
+                className="w-full py-4 text-gray-400 font-black tracking-tight"
               >
-                Cancel
+                Wait, I need to edit
               </button>
             </div>
           </div>
