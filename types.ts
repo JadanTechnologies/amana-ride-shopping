@@ -1,4 +1,3 @@
-
 export type User = {
   id: string;
   name: string;
@@ -62,6 +61,7 @@ export type Order = {
   deliveryFee: number;
   items?: CartItem[];
   shoppingList?: string;
+  listImage?: string;
   receiptImage?: string;
   budgetLimit?: number;
   deliveryAddress: string;

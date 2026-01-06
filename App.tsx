@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ShoppingBag, 
@@ -29,7 +28,11 @@ import {
   ExternalLink,
   Map as MapIcon,
   X,
-  ThumbsUp
+  ThumbsUp,
+  Camera,
+  Image as ImageIcon,
+  Trash2,
+  Upload
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -70,12 +73,15 @@ const App: React.FC = () => {
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [cefaneInput, setCefaneInput] = useState('');
   const [cefaneBudget, setCefaneBudget] = useState('');
+  const [cefaneImage, setCefaneImage] = useState<string | null>(null);
   const [isProcessingCefane, setIsProcessingCefane] = useState(false);
   const [showCefaneConfirm, setShowCefaneConfirm] = useState(false);
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [showNewAddressForm, setShowNewAddressForm] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [eta, setEta] = useState<number>(15);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [rating, setRating] = useState(0);
   const [feedbackText, setFeedbackText] = useState('');
@@ -160,15 +166,26 @@ const App: React.FC = () => {
     return <div ref={containerRef} className="w-full h-full" />;
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCefaneImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const processCefaneRequest = async () => {
-    if (!cefaneInput.trim()) return;
+    if (!cefaneInput.trim() && !cefaneImage) return;
     setIsProcessingCefane(true);
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `User request: "${cefaneInput}". Budget: ${cefaneBudget || 'Not specified'}. Just confirm you understand.`,
+        contents: `User request: "${cefaneInput}". Budget: ${cefaneBudget || 'Not specified'}. ${cefaneImage ? 'User provided an image list.' : ''} Just confirm you understand.`,
       });
 
       const newOrder: Order = {
@@ -179,6 +196,7 @@ const App: React.FC = () => {
         total: 0,
         deliveryFee: 5.0, // Base errand fee
         shoppingList: cefaneInput,
+        listImage: cefaneImage || undefined,
         budgetLimit: cefaneBudget ? parseFloat(cefaneBudget) : undefined,
         deliveryAddress: currentAddress?.details || "Unknown Address",
       };
@@ -188,6 +206,7 @@ const App: React.FC = () => {
       setEta(15); 
       setCefaneInput('');
       setCefaneBudget('');
+      setCefaneImage(null);
       setShowCefaneConfirm(false);
       setView('tracking');
     } catch (error) {
@@ -282,7 +301,6 @@ const App: React.FC = () => {
   };
 
   const submitFeedback = () => {
-    // In a real app, send rating and feedbackText to backend
     setShowFeedbackModal(false);
     setRating(0);
     setFeedbackText('');
@@ -434,17 +452,19 @@ const App: React.FC = () => {
           
           <div className="flex-1 flex flex-col space-y-6">
             <div className="bg-orange-50 p-6 rounded-[32px] border border-orange-100">
-              <h3 className="text-xl font-bold text-orange-900 mb-2">What's on your list?</h3>
-              <p className="text-orange-700/70 text-sm">Tell us the items, the store, and any specific preferences.</p>
+              <h3 className="text-xl font-bold text-orange-900 mb-2">Shopping Assistant</h3>
+              <p className="text-orange-700/70 text-sm leading-relaxed">Describe your items or upload a picture of your physical shopping list.</p>
             </div>
 
             <div 
               onClick={() => setShowAddressPicker(true)}
-              className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors"
+              className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors shadow-sm"
             >
-              <MapPin className="text-orange-600 w-5 h-5" />
+              <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                <MapPin className="text-orange-600 w-5 h-5" />
+              </div>
               <div className="flex-1">
-                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery To</p>
+                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery Address</p>
                 <p className="text-sm font-bold text-gray-800">{currentAddress?.label || 'Select Address'}</p>
                 <p className="text-[10px] text-gray-400 truncate max-w-[200px]">{currentAddress?.details}</p>
               </div>
@@ -452,35 +472,81 @@ const App: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Errand Details</label>
-              <textarea 
-                placeholder="e.g., 'Go to Melcom and get a large frying pan, then stop by the bakery for 2 loaves of wheat bread...'"
-                className="w-full min-h-[160px] bg-gray-50 rounded-[32px] p-6 text-gray-800 placeholder:text-gray-300 focus:ring-4 focus:ring-orange-100 focus:outline-none resize-none border-none text-lg"
-                value={cefaneInput}
-                onChange={(e) => setCefaneInput(e.target.value)}
-              />
+              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Tell us what to buy</label>
+              <div className="relative">
+                <textarea 
+                  placeholder="e.g., '2 cartons of fresh milk, 1 loaf of wheat bread, and a bag of charcoal...'"
+                  className="w-full min-h-[160px] bg-gray-50 rounded-[32px] p-6 pr-16 text-gray-800 placeholder:text-gray-300 focus:ring-4 focus:ring-orange-100 focus:outline-none resize-none border-none text-lg shadow-inner"
+                  value={cefaneInput}
+                  onChange={(e) => setCefaneInput(e.target.value)}
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute bottom-6 right-6 p-3 bg-white rounded-2xl shadow-xl border border-gray-100 text-orange-600 active:scale-95 transition-all hover:bg-orange-50"
+                  title="Upload image"
+                >
+                  <Camera className="w-6 h-6" />
+                </button>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={handleImageUpload} 
+                />
+              </div>
+
+              {cefaneImage ? (
+                <div className="mt-4 p-5 bg-orange-50 rounded-[32px] border border-orange-100 relative group animate-fadeIn shadow-sm">
+                   <div className="flex items-center justify-between mb-3">
+                     <div className="flex items-center gap-2">
+                       <ImageIcon className="w-4 h-4 text-orange-600" />
+                       <p className="text-[10px] font-black text-orange-900 uppercase tracking-widest">Shopping List Image</p>
+                     </div>
+                     <button 
+                      onClick={() => setCefaneImage(null)}
+                      className="p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 active:scale-90 transition-all"
+                     >
+                       <X className="w-4 h-4" />
+                     </button>
+                   </div>
+                   <div className="relative h-48 w-full rounded-2xl overflow-hidden shadow-lg border-2 border-white">
+                     <img src={cefaneImage} className="w-full h-full object-cover" alt="Shopping List Preview" />
+                   </div>
+                </div>
+              ) : (
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-4 p-4 border-2 border-dashed border-gray-200 rounded-[24px] flex flex-col items-center justify-center gap-2 text-gray-400 cursor-pointer hover:border-orange-300 transition-colors"
+                >
+                  <Upload className="w-6 h-6" />
+                  <span className="text-xs font-bold">Attach photo of handwritten list (Optional)</span>
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Optional Budget ($)</label>
-              <div className="relative">
-                <Wallet className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input 
-                  type="number" 
-                  placeholder="Enter max budget (e.g. 50)" 
-                  className="w-full bg-gray-50 rounded-2xl py-4 pl-14 pr-4 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold"
-                  value={cefaneBudget}
-                  onChange={(e) => setCefaneBudget(e.target.value)}
-                />
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Max Budget (Optional)</label>
+                <div className="relative group">
+                  <Wallet className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 group-focus-within:text-orange-600 transition-colors" />
+                  <input 
+                    type="number" 
+                    placeholder="Set a spending limit" 
+                    className="w-full bg-gray-50 rounded-[24px] py-4 pl-14 pr-4 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold shadow-inner"
+                    value={cefaneBudget}
+                    onChange={(e) => setCefaneBudget(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
 
             <button 
               onClick={() => setShowCefaneConfirm(true)}
-              disabled={!cefaneInput.trim() || isProcessingCefane}
-              className={`mt-6 w-full py-5 rounded-2xl font-black text-white shadow-2xl flex items-center justify-center gap-2 transition-all active:scale-95 ${!cefaneInput.trim() ? 'bg-gray-200' : 'bg-orange-600 hover:bg-orange-700'}`}
+              disabled={(!cefaneInput.trim() && !cefaneImage) || isProcessingCefane}
+              className={`mt-4 w-full py-5 rounded-[24px] font-black text-white shadow-2xl flex items-center justify-center gap-2 transition-all active:scale-95 ${(!cefaneInput.trim() && !cefaneImage) ? 'bg-gray-200' : 'bg-orange-600 hover:bg-orange-700'}`}
             >
-              {isProcessingCefane ? "Processing..." : "Review Errand"} <ChevronRight className="w-5 h-5" />
+              {isProcessingCefane ? "Analyzing List..." : "Send Request"} <ChevronRight className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -535,7 +601,7 @@ const App: React.FC = () => {
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Label</label>
                 <input 
-                  placeholder="e.g., Mom's House, Gym..."
+                  placeholder="e.g., Mom's House..."
                   className="w-full bg-gray-50 rounded-2xl py-4 px-6 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold"
                   value={newAddrLabel}
                   onChange={(e) => setNewAddrLabel(e.target.value)}
@@ -544,7 +610,7 @@ const App: React.FC = () => {
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Details</label>
                 <textarea 
-                  placeholder="House number, Street name, Landmark..."
+                  placeholder="House number, Street name..."
                   className="w-full bg-gray-50 rounded-2xl py-4 px-6 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold min-h-[100px] resize-none"
                   value={newAddrDetails}
                   onChange={(e) => setNewAddrDetails(e.target.value)}
@@ -625,18 +691,30 @@ const App: React.FC = () => {
               <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-5">
                 <CheckCircle2 className="text-orange-600 w-10 h-10" />
               </div>
-              <h3 className="text-3xl font-black tracking-tight">Confirm Request</h3>
-              <p className="text-gray-500 font-medium mt-1">Please verify your errand summary before we start shopping.</p>
+              <h3 className="text-3xl font-black tracking-tight">Review Errand</h3>
+              <p className="text-gray-500 font-medium mt-1">Ready to send your request?</p>
             </div>
             
             <div className="space-y-6">
-              <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100">
-                <div className="flex items-center gap-3 mb-3">
-                  <ClipboardList className="w-4 h-4 text-orange-600" />
-                  <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Shopping List</h4>
+              {cefaneInput.trim() && (
+                <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100">
+                  <div className="flex items-center gap-3 mb-3">
+                    <ClipboardList className="w-4 h-4 text-orange-600" />
+                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Shopping Items</h4>
+                  </div>
+                  <p className="text-gray-800 font-medium text-sm leading-relaxed whitespace-pre-wrap italic">"{cefaneInput}"</p>
                 </div>
-                <p className="text-gray-800 font-medium text-sm leading-relaxed whitespace-pre-wrap italic">"{cefaneInput}"</p>
-              </div>
+              )}
+
+              {cefaneImage && (
+                <div className="bg-orange-50/50 p-6 rounded-[32px] border border-orange-100/50">
+                  <div className="flex items-center gap-3 mb-3">
+                    <ImageIcon className="w-4 h-4 text-orange-600" />
+                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Attached List Photo</h4>
+                  </div>
+                  <img src={cefaneImage} className="w-full h-44 object-cover rounded-2xl shadow-md border-2 border-white" alt="List Preview" />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100">
@@ -644,20 +722,15 @@ const App: React.FC = () => {
                     <Wallet className="w-4 h-4 text-green-600" />
                     <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Budget</h4>
                   </div>
-                  <p className="text-gray-900 font-black">{cefaneBudget ? `$${parseFloat(cefaneBudget).toFixed(2)}` : 'No Limit'}</p>
+                  <p className="text-gray-900 font-black">{cefaneBudget ? `$${parseFloat(cefaneBudget).toFixed(2)}` : 'Unlimited'}</p>
                 </div>
                 <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100">
                   <div className="flex items-center gap-3 mb-2">
                     <MapPin className="w-4 h-4 text-red-600" />
-                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Address</h4>
+                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">To</h4>
                   </div>
                   <p className="text-gray-900 font-black text-xs truncate">{currentAddress?.label || 'Unknown'}</p>
                 </div>
-              </div>
-              
-              <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 flex items-start gap-3">
-                <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-                <p className="text-[10px] text-blue-800 font-medium leading-tight">Once confirmed, your errand will be sent to the Amana Rides Super Admin for fulfillment.</p>
               </div>
             </div>
 
@@ -667,13 +740,13 @@ const App: React.FC = () => {
                 disabled={isProcessingCefane}
                 className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-3 disabled:opacity-50"
               >
-                {isProcessingCefane ? 'Sending...' : 'Confirm & Send Request'} <Send className="w-5 h-5" />
+                {isProcessingCefane ? 'Connecting...' : 'Confirm & Place Request'} <Send className="w-5 h-5" />
               </button>
               <button 
                 onClick={() => setShowCefaneConfirm(false)}
                 className="w-full py-4 text-gray-400 font-black tracking-tight"
               >
-                Go back & edit
+                Wait, I need to edit
               </button>
             </div>
           </div>
@@ -722,7 +795,7 @@ const App: React.FC = () => {
               <div className="flex justify-between items-start">
                 <div>
                   <span className="text-[10px] font-black uppercase text-orange-600 tracking-widest bg-orange-50 px-3 py-1 rounded-lg">
-                    {activeOrder.type} Errand
+                    {activeOrder.type} Request
                   </span>
                   <h3 className="text-3xl font-black text-gray-900 mt-3 tracking-tight">{activeOrder.status}</h3>
                   <p className="text-gray-400 font-medium mt-1">Order ID: #{activeOrder.id.toUpperCase()}</p>
@@ -744,7 +817,7 @@ const App: React.FC = () => {
               </div>
               <div className="flex justify-between items-center">
                 <p className="text-xs font-bold text-gray-800">
-                  {activeOrder.status === OrderStatus.DELIVERED ? "Enjoy your order!" : 
+                  {activeOrder.status === OrderStatus.DELIVERED ? "Enjoy your items!" : 
                    `Next: ${Object.values(OrderStatus)[Object.values(OrderStatus).indexOf(activeOrder.status) + 1] || 'Done'}`}
                 </p>
                 <div className="flex items-center gap-2 bg-gray-900 text-white px-3 py-1.5 rounded-xl shadow-lg">
@@ -759,13 +832,13 @@ const App: React.FC = () => {
                 onClick={simulateProgress}
                 className="flex-1 bg-orange-50 text-orange-600 font-black py-4 rounded-2xl border border-orange-100 active:scale-95 transition-transform"
               >
-                Simulate Next
+                Next Status
               </button>
               <button 
                 onClick={() => setView('home')}
                 className="flex-1 bg-gray-900 text-white font-black py-4 rounded-2xl active:scale-95 transition-transform"
               >
-                Go Home
+                Return Home
               </button>
             </div>
           </div>
@@ -841,7 +914,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 space-y-4">
+            <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 space-y-4 shadow-sm">
                <div className="flex items-center gap-4">
                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-orange-600">
                    <MapPin className="w-5 h-5" />
@@ -868,12 +941,27 @@ const App: React.FC = () => {
                 ))}
                 
                 {selectedOrder.type === 'Cefane' && (
-                  <div className="p-5 bg-orange-50/50 rounded-3xl border border-orange-100/50">
-                    <div className="flex items-center gap-3 mb-2">
-                      <ClipboardList className="w-4 h-4 text-orange-600" />
-                      <p className="text-xs font-black text-orange-900">Requested Errand</p>
-                    </div>
-                    <p className="text-sm text-orange-800/80 italic leading-relaxed whitespace-pre-wrap">"{selectedOrder.shoppingList}"</p>
+                  <div className="p-5 bg-orange-50/50 rounded-3xl border border-orange-100/50 space-y-5">
+                    {selectedOrder.shoppingList && (
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <ClipboardList className="w-4 h-4 text-orange-600" />
+                          <p className="text-xs font-black text-orange-900">Requested Errand</p>
+                        </div>
+                        <p className="text-sm text-orange-800/80 italic leading-relaxed whitespace-pre-wrap font-medium">"{selectedOrder.shoppingList}"</p>
+                      </div>
+                    )}
+                    
+                    {selectedOrder.listImage && (
+                      <div>
+                         <div className="flex items-center gap-3 mb-2">
+                          <ImageIcon className="w-4 h-4 text-orange-600" />
+                          <p className="text-xs font-black text-orange-900 uppercase">Handwritten List Photo</p>
+                        </div>
+                        <img src={selectedOrder.listImage} className="w-full h-56 object-cover rounded-2xl shadow-xl border-4 border-white" alt="List" />
+                      </div>
+                    )}
+
                     {selectedOrder.budgetLimit && (
                        <p className="text-[10px] font-black mt-3 text-orange-700 uppercase tracking-widest">Budget Limit: ${selectedOrder.budgetLimit}</p>
                     )}
@@ -909,7 +997,7 @@ const App: React.FC = () => {
             {selectedOrder.status === OrderStatus.DELIVERED && (
               <button 
                 onClick={() => setShowFeedbackModal(true)}
-                className="w-full py-5 bg-white text-orange-600 border-2 border-orange-600 font-black rounded-3xl active:scale-95 transition-transform flex items-center justify-center gap-3"
+                className="w-full py-5 bg-white text-orange-600 border-2 border-orange-600 font-black rounded-3xl active:scale-95 transition-transform flex items-center justify-center gap-3 hover:bg-orange-50"
               >
                 <ThumbsUp className="w-5 h-5" /> Rate Experience
               </button>
@@ -920,67 +1008,85 @@ const App: React.FC = () => {
 
       {/* Nav Bar */}
       {view !== 'auth' && view !== 'tracking' && view !== 'cefane' && view !== 'orderDetails' && (
-        <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-2xl border-t border-gray-100 px-8 py-5 flex justify-between items-center z-50">
-          <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1.5 ${view === 'home' ? 'text-orange-600' : 'text-gray-300'}`}>
+        <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-2xl border-t border-gray-100 px-8 py-5 flex justify-between items-center z-50 shadow-2xl">
+          <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'home' ? 'text-orange-600' : 'text-gray-300'}`}>
             <HomeIcon className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-tighter">Home</span>
           </button>
-          <button onClick={() => setView('marketplace')} className={`flex flex-col items-center gap-1.5 ${view === 'marketplace' ? 'text-orange-600' : 'text-gray-300'}`}>
+          <button onClick={() => setView('marketplace')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'marketplace' ? 'text-orange-600' : 'text-gray-300'}`}>
             <Search className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-tighter">Browse</span>
           </button>
-          <button onClick={() => setView('cart')} className={`flex flex-col items-center gap-1.5 ${view === 'cart' ? 'text-orange-600' : 'text-gray-300'} relative`}>
+          <button onClick={() => setView('cart')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'cart' ? 'text-orange-600' : 'text-gray-300'} relative`}>
             <ShoppingCart className="w-6 h-6" />
-            {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{cart.length}</span>}
+            {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black animate-bounce-short">{cart.length}</span>}
             <span className="text-[10px] font-black uppercase tracking-tighter">Cart</span>
           </button>
-          <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1.5 ${view === 'profile' || view === 'orderHistory' ? 'text-orange-600' : 'text-gray-300'}`}>
+          <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'profile' || view === 'orderHistory' ? 'text-orange-600' : 'text-gray-300'}`}>
             <UserIcon className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-tighter">Profile</span>
           </button>
         </nav>
       )}
 
-      {/* Re-implementing Marketplace and Vendor briefly for completeness */}
+      {/* Marketplace & Vendor flows re-included for stability */}
       {view === 'marketplace' && (
         <div className="p-5 pb-24 space-y-6 overflow-y-auto animate-fadeIn">
           <div className="flex items-center">
-            <button onClick={() => setView('home')} className="mr-3"><ArrowLeft className="w-6 h-6" /></button>
-            <h2 className="text-2xl font-black">All Vendors</h2>
+            <button onClick={() => setView('home')} className="mr-3 p-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
+            <h2 className="text-2xl font-black tracking-tight">Marketplace</h2>
           </div>
-          {MOCK_VENDORS.map(v => (
-             <div key={v.id} onClick={() => { setSelectedVendor(v); setView('vendor'); }} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer hover:border-orange-200 transition-all">
-               <img src={v.image} className="w-full h-40 object-cover" alt="" />
-               <div className="p-4 flex justify-between items-center">
-                 <div>
-                   <h4 className="font-bold">{v.name}</h4>
-                   <p className="text-xs text-gray-400">{v.category} • {v.deliveryTime}</p>
-                 </div>
-                 <div className="bg-orange-50 p-2 rounded-xl text-orange-600 font-bold text-xs">★ {v.rating}</div>
-               </div>
-             </div>
-          ))}
+          <div className="space-y-4">
+            {MOCK_VENDORS.map(v => (
+              <div key={v.id} onClick={() => { setSelectedVendor(v); setView('vendor'); }} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 cursor-pointer hover:border-orange-200 transition-all active:scale-[0.98]">
+                <img src={v.image} className="w-full h-44 object-cover" alt="" />
+                <div className="p-5 flex justify-between items-center">
+                  <div>
+                    <h4 className="font-black text-lg">{v.name}</h4>
+                    <p className="text-xs text-gray-400 font-medium">{v.category} • {v.deliveryTime}</p>
+                  </div>
+                  <div className="bg-orange-50 px-3 py-1.5 rounded-xl text-orange-600 font-black text-sm flex items-center gap-1">
+                    <Star className="w-4 h-4 fill-orange-600" /> {v.rating}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {view === 'vendor' && selectedVendor && (
-        <div className="pb-24 overflow-y-auto animate-fadeIn">
-          <div className="h-64 relative">
+        <div className="pb-24 overflow-y-auto animate-fadeIn bg-white h-full">
+          <div className="h-72 relative">
              <img src={selectedVendor.image} className="w-full h-full object-cover" alt="" />
-             <button onClick={() => setView('marketplace')} className="absolute top-6 left-6 bg-white p-3 rounded-2xl shadow-xl"><ArrowLeft className="w-6 h-6" /></button>
+             <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent"></div>
+             <button onClick={() => setView('marketplace')} className="absolute top-6 left-6 bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl active:scale-95 transition-transform">
+               <ArrowLeft className="w-6 h-6" />
+             </button>
           </div>
-          <div className="bg-white rounded-t-[40px] -mt-10 relative p-8">
-            <h2 className="text-3xl font-black mb-1">{selectedVendor.name}</h2>
-            <p className="text-gray-400 mb-8">{selectedVendor.category} • Fast Delivery</p>
-            <div className="space-y-4">
+          <div className="bg-white rounded-t-[48px] -mt-12 relative p-8 shadow-2xl border-t border-gray-50">
+            <div className="flex justify-between items-start mb-2">
+              <h2 className="text-3xl font-black tracking-tight">{selectedVendor.name}</h2>
+              <div className="bg-orange-600 text-white px-3 py-1.5 rounded-2xl font-black text-sm">★ {selectedVendor.rating}</div>
+            </div>
+            <p className="text-gray-400 font-medium mb-8 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> 
+              {selectedVendor.category} • Fast Delivery
+            </p>
+            
+            <div className="space-y-5">
+              <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1">Popular Items</h3>
               {MOCK_PRODUCTS.filter(p => p.vendorId === selectedVendor.id).map(p => (
-                <div key={p.id} className="flex gap-4 items-center bg-gray-50 p-4 rounded-3xl">
-                  <img src={p.image} className="w-20 h-20 rounded-2xl object-cover" alt="" />
+                <div key={p.id} className="flex gap-5 items-center bg-gray-50/50 p-4 rounded-[32px] border border-gray-100/50 hover:bg-orange-50/30 transition-colors">
+                  <img src={p.image} className="w-24 h-24 rounded-3xl object-cover shadow-md border-2 border-white" alt="" />
                   <div className="flex-1">
-                    <h4 className="font-bold">{p.name}</h4>
-                    <p className="text-orange-600 font-black">${p.price}</p>
+                    <h4 className="font-bold text-gray-900">{p.name}</h4>
+                    <p className="text-xs text-gray-400 line-clamp-1 mb-2">{p.description}</p>
+                    <p className="text-orange-600 font-black text-lg">${p.price}</p>
                   </div>
-                  <button onClick={() => addToCart(p, selectedVendor)} className="bg-orange-600 text-white p-3 rounded-2xl shadow-xl active:scale-95 transition-transform"><Plus className="w-6 h-6" /></button>
+                  <button onClick={() => addToCart(p, selectedVendor)} className="bg-orange-600 text-white p-4 rounded-2xl shadow-xl active:scale-95 transition-transform hover:bg-orange-700">
+                    <Plus className="w-6 h-6" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -989,9 +1095,9 @@ const App: React.FC = () => {
       )}
 
       {view === 'profile' && user && (
-        <div className="p-8 space-y-10 animate-fadeIn overflow-y-auto pb-24">
+        <div className="p-8 space-y-10 animate-fadeIn overflow-y-auto pb-24 h-full">
           <div className="flex items-center gap-6">
-            <div className="w-24 h-24 rounded-[32px] overflow-hidden shadow-xl border-4 border-white">
+            <div className="w-24 h-24 rounded-[36px] overflow-hidden shadow-2xl border-4 border-white transform -rotate-3">
               <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop" className="w-full h-full object-cover" alt="" />
             </div>
             <div>
@@ -1000,35 +1106,41 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
              <div 
                onClick={() => setView('orderHistory')}
-               className="flex items-center justify-between p-5 bg-white rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+               className="flex items-center justify-between p-6 bg-white rounded-[32px] shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-all hover:scale-[1.02]"
              >
-               <div className="flex items-center gap-4">
-                 <div className="text-orange-500"><Clock /></div>
-                 <span className="font-bold text-gray-800">Order History</span>
+               <div className="flex items-center gap-5">
+                 <div className="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center text-orange-600"><Clock /></div>
+                 <div>
+                    <span className="font-black text-gray-800 block">Order History</span>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{orders.length} orders total</span>
+                 </div>
                </div>
-               <span className="text-xs text-gray-300 font-bold">{orders.length} orders</span>
+               <ChevronRight className="w-5 h-5 text-gray-300" />
              </div>
 
              {[
-               { icon: <MapPin />, label: "Saved Addresses", val: `${savedAddresses.length} saved`, onClick: () => setShowAddressPicker(true) },
-               { icon: <AlertCircle />, label: "Support", val: "24/7", onClick: () => {} },
+               { icon: <MapPin />, label: "Saved Addresses", val: `${savedAddresses.length} saved`, onClick: () => setShowAddressPicker(true), color: 'bg-blue-100 text-blue-600' },
+               { icon: <AlertCircle />, label: "Help & Support", val: "24/7", onClick: () => {}, color: 'bg-green-100 text-green-600' },
              ].map((item, i) => (
-               <div key={i} onClick={item.onClick} className="flex items-center justify-between p-5 bg-white rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors">
-                 <div className="flex items-center gap-4">
-                   <div className="text-orange-500">{item.icon}</div>
-                   <span className="font-bold text-gray-800">{item.label}</span>
+               <div key={i} onClick={item.onClick} className="flex items-center justify-between p-6 bg-white rounded-[32px] shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-all hover:scale-[1.02]">
+                 <div className="flex items-center gap-5">
+                   <div className={`w-12 h-12 ${item.color} rounded-2xl flex items-center justify-center`}>{item.icon}</div>
+                   <div>
+                      <span className="font-black text-gray-800 block">{item.label}</span>
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.val}</span>
+                   </div>
                  </div>
-                 <span className="text-xs text-gray-300 font-bold">{item.val}</span>
+                 <ChevronRight className="w-5 h-5 text-gray-300" />
                </div>
              ))}
           </div>
 
           <button 
             onClick={() => {setUser(null); setView('auth');}}
-            className="w-full flex items-center justify-center gap-3 py-5 bg-red-50 text-red-600 font-black rounded-3xl border border-red-100 active:scale-95 transition-transform"
+            className="w-full flex items-center justify-center gap-3 py-5 bg-red-50 text-red-600 font-black rounded-[28px] border border-red-100 active:scale-95 transition-transform hover:bg-red-100"
           >
             <LogOut className="w-5 h-5" /> Sign Out
           </button>
@@ -1037,35 +1149,61 @@ const App: React.FC = () => {
 
       {view === 'cart' && (
         <div className="p-5 flex flex-col h-full bg-white overflow-y-auto animate-fadeIn">
-          <div className="flex items-center mb-6">
-            <button onClick={() => setView('home')} className="mr-3"><ArrowLeft className="w-6 h-6" /></button>
-            <h2 className="text-2xl font-black">My Cart</h2>
+          <div className="flex items-center mb-8 px-2">
+            <button onClick={() => setView('home')} className="mr-4 p-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
+            <h2 className="text-2xl font-black tracking-tight">Shopping Bag</h2>
           </div>
           {cart.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center opacity-30">
-              <ShoppingCart className="w-24 h-24 mb-4" />
-              <p className="font-bold">Your cart is empty</p>
+              <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+                <ShoppingCart className="w-16 h-16" />
+              </div>
+              <p className="font-black text-xl">Your bag is empty</p>
+              <button 
+                onClick={() => setView('marketplace')}
+                className="mt-6 text-orange-600 font-black text-sm uppercase tracking-widest"
+              >
+                Start Shopping
+              </button>
             </div>
           ) : (
-            <div className="flex-1 space-y-4 pb-20">
-               {cart.map(item => (
-                 <div key={item.product.id} className="flex gap-4 p-4 bg-gray-50 rounded-3xl items-center">
-                    <img src={item.product.image} className="w-16 h-16 rounded-2xl object-cover" alt="" />
-                    <div className="flex-1">
-                      <h4 className="font-bold text-sm">{item.product.name}</h4>
-                      <p className="text-orange-600 font-black text-xs">${item.product.price}</p>
-                    </div>
-                    <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm">
-                      <button onClick={() => removeFromCart(item.product.id)} className="active:scale-90"><Minus className="w-4 h-4" /></button>
-                      <span className="font-black text-xs">{item.quantity}</span>
-                      <button onClick={() => addToCart(item.product, item.vendor)} className="active:scale-90"><Plus className="w-4 h-4" /></button>
-                    </div>
-                 </div>
-               ))}
-               <div className="mt-10 space-y-4">
-                  <div className="flex justify-between font-bold text-gray-400"><span>Subtotal</span><span>${cart.reduce((a,b)=>a+(b.product.price*b.quantity),0).toFixed(2)}</span></div>
-                  <div className="flex justify-between text-2xl font-black"><span>Total</span><span>${(cart.reduce((a,b)=>a+(b.product.price*b.quantity),0)+2.5).toFixed(2)}</span></div>
-                  <button onClick={handleCheckout} className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-2xl active:scale-95 transition-transform">Checkout</button>
+            <div className="flex-1 flex flex-col px-2">
+               <div className="space-y-5 flex-1 pb-10">
+                 {cart.map(item => (
+                   <div key={item.product.id} className="flex gap-5 p-5 bg-gray-50 rounded-[32px] items-center border border-gray-100 shadow-sm">
+                      <img src={item.product.image} className="w-20 h-20 rounded-2xl object-cover shadow-md border border-white" alt="" />
+                      <div className="flex-1">
+                        <h4 className="font-black text-gray-900">{item.product.name}</h4>
+                        <p className="text-orange-600 font-black text-sm mt-1">${item.product.price}</p>
+                      </div>
+                      <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-2xl shadow-sm border border-gray-100">
+                        <button onClick={() => removeFromCart(item.product.id)} className="p-1 hover:text-orange-600 transition-colors"><Minus className="w-4 h-4" /></button>
+                        <span className="font-black text-sm w-4 text-center">{item.quantity}</span>
+                        <button onClick={() => addToCart(item.product, item.vendor)} className="p-1 hover:text-orange-600 transition-colors"><Plus className="w-4 h-4" /></button>
+                      </div>
+                   </div>
+                 ))}
+               </div>
+               
+               <div className="sticky bottom-0 bg-white pt-6 pb-24 space-y-4 border-t border-gray-50">
+                  <div className="flex justify-between items-center text-gray-400 font-bold">
+                    <span className="text-sm">Subtotal</span>
+                    <span className="text-sm">${cart.reduce((a,b)=>a+(b.product.price*b.quantity),0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-gray-400 font-bold pb-2">
+                    <span className="text-sm">Delivery Fee</span>
+                    <span className="text-sm">$2.50</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2">
+                    <span className="text-xl font-black">Total Price</span>
+                    <span className="text-3xl font-black text-orange-600">${(cart.reduce((a,b)=>a+(b.product.price*b.quantity),0)+2.5).toFixed(2)}</span>
+                  </div>
+                  <button 
+                    onClick={handleCheckout} 
+                    className="w-full py-5 bg-orange-600 text-white font-black rounded-[28px] shadow-2xl active:scale-95 transition-transform hover:bg-orange-700 flex items-center justify-center gap-3"
+                  >
+                    Confirm Checkout <CheckCircle2 className="w-6 h-6" />
+                  </button>
                </div>
             </div>
           )}
@@ -1074,17 +1212,18 @@ const App: React.FC = () => {
 
       {/* Global Animations */}
       <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
-        .animate-scaleIn { animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-slideUp { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-bounce-short { animation: bounce-short 1s ease-in-out infinite; }
-        @keyframes bounce-short { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        .animate-fadeIn { animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-scaleIn { animation: scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-slideUp { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-bounce-short { animation: bounce-short 1.5s ease-in-out infinite; }
+        @keyframes bounce-short { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
         .leaflet-container { font-family: inherit; }
         ::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        * { -webkit-tap-highlight-color: transparent; }
       `}</style>
     </div>
   );
