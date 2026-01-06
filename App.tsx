@@ -23,7 +23,8 @@ import {
   Info,
   AlertCircle,
   ClipboardList,
-  Wallet
+  Wallet,
+  Phone
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -62,9 +63,10 @@ const App: React.FC = () => {
   const [cefaneBudget, setCefaneBudget] = useState('');
   const [isProcessingCefane, setIsProcessingCefane] = useState(false);
   const [showCefaneConfirm, setShowCefaneConfirm] = useState(false);
+  const [eta, setEta] = useState<number>(15);
 
   // Map Component Logic
-  const MapContainer = ({ order }: { order: Order }) => {
+  const MapContainer = ({ order, onProgressUpdate }: { order: Order, onProgressUpdate: (progress: number) => void }) => {
     const mapRef = useRef<any>(null);
     const riderMarkerRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -79,13 +81,20 @@ const App: React.FC = () => {
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
       const destIcon = L.divIcon({
-        html: `<div class="bg-green-600 p-2 rounded-full border-2 border-white shadow-lg text-white"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></div>`,
-        className: '', iconSize: [32, 32], iconAnchor: [16, 32]
+        html: `<div class="bg-green-600 p-2.5 rounded-full border-2 border-white shadow-xl text-white scale-110"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></div>`,
+        className: '', iconSize: [36, 36], iconAnchor: [18, 36]
       });
 
       const riderIcon = L.divIcon({
-        html: `<div class="bg-orange-500 p-2 rounded-full border-2 border-white shadow-lg text-white"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg></div>`,
-        className: '', iconSize: [32, 32], iconAnchor: [16, 16]
+        html: `
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-12 h-12 bg-orange-500/30 rounded-full animate-ping"></div>
+            <div class="bg-orange-600 p-2.5 rounded-full border-2 border-white shadow-2xl text-white z-10 scale-125">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>
+            </div>
+          </div>
+        `,
+        className: '', iconSize: [40, 40], iconAnchor: [20, 20]
       });
 
       L.marker(dest, { icon: destIcon }).addTo(map);
@@ -98,11 +107,15 @@ const App: React.FC = () => {
         if (order.status !== OrderStatus.OUT_FOR_DELIVERY) return;
         progress += 0.005;
         if (progress >= 1) progress = 1;
+        
         const lat = start[0] + (dest[0] - start[0]) * progress;
         const lng = start[1] + (dest[1] - start[1]) * progress;
+        
         riderMarkerRef.current.setLatLng([lat, lng]);
+        onProgressUpdate(progress);
+
         if (progress >= 1) clearInterval(moveInterval);
-      }, 2000);
+      }, 1000);
 
       return () => {
         clearInterval(moveInterval);
@@ -136,6 +149,7 @@ const App: React.FC = () => {
       };
       
       setActiveOrder(newOrder);
+      setEta(15); // Initial ETA
       setCefaneInput('');
       setCefaneBudget('');
       setShowCefaneConfirm(false);
@@ -185,6 +199,7 @@ const App: React.FC = () => {
       riderLocation: [5.6037, -0.1870]
     };
     setActiveOrder(newOrder);
+    setEta(20); // Longer ETA for marketplace
     setCart([]);
     setView('tracking');
   };
@@ -194,8 +209,16 @@ const App: React.FC = () => {
     const statuses = Object.values(OrderStatus);
     const currentIndex = statuses.indexOf(activeOrder.status);
     if (currentIndex < statuses.length - 1) {
-      setActiveOrder({ ...activeOrder, status: statuses[currentIndex + 1] });
+      const nextStatus = statuses[currentIndex + 1];
+      setActiveOrder({ ...activeOrder, status: nextStatus });
     }
+  };
+
+  const handleProgressUpdate = (progress: number) => {
+    // Decrease ETA as progress increases
+    const initialEta = activeOrder?.type === 'Cefane' ? 15 : 20;
+    const remaining = Math.max(1, Math.round(initialEta * (1 - progress)));
+    setEta(remaining);
   };
 
   return (
@@ -419,7 +442,7 @@ const App: React.FC = () => {
       {view === 'tracking' && activeOrder && (
         <div className="h-full flex flex-col bg-white overflow-hidden">
           <div className="flex-1 relative">
-            <MapContainer order={activeOrder} />
+            <MapContainer order={activeOrder} onProgressUpdate={handleProgressUpdate} />
             <button 
               onClick={() => setView('home')} 
               className="absolute top-6 left-6 bg-white p-4 rounded-2xl shadow-2xl z-20 border border-gray-100 active:scale-95"
@@ -433,21 +456,41 @@ const App: React.FC = () => {
             )}
           </div>
 
-          <div className="bg-white rounded-t-[48px] -mt-10 relative z-10 p-8 shadow-[0_-20px_60px_rgba(0,0,0,0.15)] flex flex-col gap-6">
+          <div className="bg-white rounded-t-[48px] -mt-10 relative z-30 p-8 shadow-[0_-20px_60px_rgba(0,0,0,0.15)] flex flex-col gap-6">
             <div className="w-16 h-1.5 bg-gray-100 rounded-full mx-auto" />
             
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-black uppercase text-orange-600 tracking-widest bg-orange-50 px-3 py-1 rounded-lg">
-                  {activeOrder.type} Errand
-                </span>
-                <h3 className="text-3xl font-black text-gray-900 mt-3 tracking-tight">{activeOrder.status}</h3>
-                <p className="text-gray-400 font-medium mt-1">Order ID: #{activeOrder.id.toUpperCase()}</p>
+            {activeOrder.status === OrderStatus.OUT_FOR_DELIVERY ? (
+              <div className="bg-orange-50 p-5 rounded-[32px] border border-orange-100 flex items-center gap-4 animate-fadeIn">
+                <img src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&h=100&fit=crop" className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md" alt="Rider" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-black text-orange-900">Kofi Mensah</h4>
+                    <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg shadow-sm">
+                      <Star className="w-3 h-3 text-orange-500 fill-orange-500" />
+                      <span className="text-[10px] font-black">4.9</span>
+                    </div>
+                  </div>
+                  <p className="text-orange-700/70 text-xs font-bold mt-0.5">Honda Super Cub • GW-402-23</p>
+                  <div className="flex gap-2 mt-2">
+                    <button className="bg-white p-2 rounded-xl shadow-sm text-orange-600 active:scale-90 transition-transform"><Phone className="w-4 h-4" /></button>
+                    <button className="bg-white p-2 rounded-xl shadow-sm text-orange-600 active:scale-90 transition-transform"><MessageSquare className="w-4 h-4" /></button>
+                  </div>
+                </div>
               </div>
-              <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center shadow-inner">
-                <Navigation className="w-10 h-10 text-orange-600 animate-bounce-short" />
+            ) : (
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-[10px] font-black uppercase text-orange-600 tracking-widest bg-orange-50 px-3 py-1 rounded-lg">
+                    {activeOrder.type} Errand
+                  </span>
+                  <h3 className="text-3xl font-black text-gray-900 mt-3 tracking-tight">{activeOrder.status}</h3>
+                  <p className="text-gray-400 font-medium mt-1">Order ID: #{activeOrder.id.toUpperCase()}</p>
+                </div>
+                <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center shadow-inner">
+                  <Navigation className="w-10 h-10 text-orange-600 animate-bounce-short" />
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-4">
               <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden flex">
@@ -458,12 +501,15 @@ const App: React.FC = () => {
                   return <div key={status} className={`h-full flex-1 transition-all duration-700 ${isPast ? 'bg-orange-500' : 'bg-transparent'}`} />;
                 })}
               </div>
-              <div className="flex justify-between">
-                <p className="text-xs font-bold text-gray-800">Next: {
-                  activeOrder.status === OrderStatus.DELIVERED ? "Enjoy!" : 
-                  Object.values(OrderStatus)[Object.values(OrderStatus).indexOf(activeOrder.status) + 1]
-                }</p>
-                <p className="text-xs font-bold text-orange-600">ETA: 12 mins</p>
+              <div className="flex justify-between items-center">
+                <p className="text-xs font-bold text-gray-800">
+                  {activeOrder.status === OrderStatus.DELIVERED ? "Enjoy your order!" : 
+                   `Next: ${Object.values(OrderStatus)[Object.values(OrderStatus).indexOf(activeOrder.status) + 1] || 'Done'}`}
+                </p>
+                <div className="flex items-center gap-2 bg-gray-900 text-white px-3 py-1.5 rounded-xl shadow-lg">
+                  <Clock className="w-3 h-3" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">{activeOrder.status === OrderStatus.DELIVERED ? 'Arrived' : `ETA: ${eta} mins`}</span>
+                </div>
               </div>
             </div>
 
@@ -472,7 +518,7 @@ const App: React.FC = () => {
                 onClick={simulateProgress}
                 className="flex-1 bg-orange-50 text-orange-600 font-black py-4 rounded-2xl border border-orange-100 active:scale-95 transition-transform"
               >
-                Next Step
+                Simulate Next
               </button>
               <button 
                 onClick={() => setView('home')}
