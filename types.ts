@@ -59,12 +59,13 @@ export type Order = {
   status: OrderStatus;
   date: string;
   total: number;
+  deliveryFee: number;
   items?: CartItem[];
   shoppingList?: string;
   receiptImage?: string;
   budgetLimit?: number;
-  deliveryAddressId?: string;
+  deliveryAddress: string;
   riderLocation?: [number, number];
 };
 
-export type AppView = 'home' | 'marketplace' | 'vendor' | 'cefane' | 'cart' | 'tracking' | 'profile' | 'auth';
+export type AppView = 'home' | 'marketplace' | 'vendor' | 'cefane' | 'cart' | 'tracking' | 'profile' | 'auth' | 'orderHistory' | 'orderDetails';

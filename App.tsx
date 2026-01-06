@@ -24,7 +24,9 @@ import {
   AlertCircle,
   ClipboardList,
   Wallet,
-  Phone
+  Phone,
+  Receipt,
+  ExternalLink
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -57,13 +59,18 @@ const App: React.FC = () => {
   const [view, setView] = useState<AppView>('auth');
   const [user, setUser] = useState<User | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [cefaneInput, setCefaneInput] = useState('');
   const [cefaneBudget, setCefaneBudget] = useState('');
   const [isProcessingCefane, setIsProcessingCefane] = useState(false);
   const [showCefaneConfirm, setShowCefaneConfirm] = useState(false);
   const [eta, setEta] = useState<number>(15);
+
+  const activeOrder = useMemo(() => orders.find(o => o.id === activeOrderId) || null, [orders, activeOrderId]);
+  const selectedOrder = useMemo(() => orders.find(o => o.id === selectedOrderId) || null, [orders, selectedOrderId]);
 
   // Map Component Logic
   const MapContainer = ({ order, onProgressUpdate }: { order: Order, onProgressUpdate: (progress: number) => void }) => {
@@ -144,12 +151,15 @@ const App: React.FC = () => {
         status: OrderStatus.PENDING,
         date: new Date().toISOString(),
         total: 0,
+        deliveryFee: 5.0, // Base errand fee
         shoppingList: cefaneInput,
         budgetLimit: cefaneBudget ? parseFloat(cefaneBudget) : undefined,
+        deliveryAddress: "Main Street, Accra",
       };
       
-      setActiveOrder(newOrder);
-      setEta(15); // Initial ETA
+      setOrders(prev => [newOrder, ...prev]);
+      setActiveOrderId(newOrder.id);
+      setEta(15); 
       setCefaneInput('');
       setCefaneBudget('');
       setShowCefaneConfirm(false);
@@ -188,34 +198,39 @@ const App: React.FC = () => {
   };
 
   const handleCheckout = () => {
-    const total = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
+    const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
     const newOrder: Order = {
       id: `ord_${Math.random().toString(36).substr(2, 9)}`,
       type: 'Marketplace',
       status: OrderStatus.PENDING,
       date: new Date().toISOString(),
-      total,
+      total: subtotal,
+      deliveryFee: 2.5,
       items: [...cart],
+      deliveryAddress: "Main Street, Accra",
       riderLocation: [5.6037, -0.1870]
     };
-    setActiveOrder(newOrder);
-    setEta(20); // Longer ETA for marketplace
+    setOrders(prev => [newOrder, ...prev]);
+    setActiveOrderId(newOrder.id);
+    setEta(20); 
     setCart([]);
     setView('tracking');
   };
 
   const simulateProgress = () => {
-    if (!activeOrder) return;
-    const statuses = Object.values(OrderStatus);
-    const currentIndex = statuses.indexOf(activeOrder.status);
-    if (currentIndex < statuses.length - 1) {
-      const nextStatus = statuses[currentIndex + 1];
-      setActiveOrder({ ...activeOrder, status: nextStatus });
-    }
+    if (!activeOrderId) return;
+    setOrders(prev => prev.map(o => {
+      if (o.id !== activeOrderId) return o;
+      const statuses = Object.values(OrderStatus);
+      const currentIndex = statuses.indexOf(o.status);
+      if (currentIndex < statuses.length - 1) {
+        return { ...o, status: statuses[currentIndex + 1] };
+      }
+      return o;
+    }));
   };
 
   const handleProgressUpdate = (progress: number) => {
-    // Decrease ETA as progress increases
     const initialEta = activeOrder?.type === 'Cefane' ? 15 : 20;
     const remaining = Math.max(1, Math.round(initialEta * (1 - progress)));
     setEta(remaining);
@@ -294,6 +309,24 @@ const App: React.FC = () => {
             <div className="absolute -bottom-10 -right-10 w-48 h-48 bg-orange-500/30 rounded-full blur-2xl group-hover:bg-orange-400/40 transition-colors" />
             <ClipboardList className="absolute top-10 right-5 w-24 h-24 text-white/10 -rotate-12" />
           </div>
+
+          {activeOrder && activeOrder.status !== OrderStatus.DELIVERED && (
+            <div 
+              onClick={() => setView('tracking')}
+              className="bg-white p-4 rounded-3xl border border-orange-100 shadow-sm flex items-center justify-between cursor-pointer animate-fadeIn"
+            >
+              <div className="flex items-center gap-4">
+                <div className="bg-orange-50 p-2 rounded-xl">
+                  <Truck className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <h4 className="font-black text-sm">Active Order Tracking</h4>
+                  <p className="text-xs text-gray-400">{activeOrder.status} • ETA: {eta} mins</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-orange-600" />
+            </div>
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-4">
@@ -414,11 +447,6 @@ const App: React.FC = () => {
                   <p className="text-gray-900 font-black text-xs line-clamp-1">Main St, Accra</p>
                 </div>
               </div>
-
-              <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 flex gap-3">
-                <Info className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
-                <p className="text-[10px] text-orange-800 leading-tight">Your request will be sent to the admin for review. Once accepted, a rider will be assigned to fulfill your errand.</p>
-              </div>
             </div>
 
             <div className="mt-10 flex flex-col gap-3">
@@ -531,8 +559,145 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {view === 'orderHistory' && (
+        <div className="p-6 pb-24 space-y-6 overflow-y-auto">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setView('profile')} className="p-2 bg-white rounded-xl shadow-sm border border-gray-100">
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h2 className="text-2xl font-black">Order History</h2>
+          </div>
+          
+          {orders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 opacity-20">
+              <Clock className="w-20 h-20 mb-4" />
+              <p className="font-bold">No orders yet</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {orders.map(order => (
+                <div 
+                  key={order.id} 
+                  onClick={() => { setSelectedOrderId(order.id); setView('orderDetails'); }}
+                  className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm flex items-center justify-between cursor-pointer hover:scale-[1.01] transition-all"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl ${order.type === 'Cefane' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
+                      {order.type === 'Cefane' ? <Package className="w-6 h-6" /> : <ShoppingBag className="w-6 h-6" />}
+                    </div>
+                    <div>
+                      <h4 className="font-black text-sm">{order.type} #{order.id.slice(-4).toUpperCase()}</h4>
+                      <p className="text-[10px] text-gray-400 font-bold">{new Date(order.date).toLocaleDateString()}</p>
+                      <div className="mt-1">
+                        <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${order.status === OrderStatus.DELIVERED ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                          {order.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-black text-sm">${(order.total + order.deliveryFee).toFixed(2)}</p>
+                    <ChevronRight className="w-4 h-4 text-gray-300 ml-auto mt-1" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === 'orderDetails' && selectedOrder && (
+        <div className="flex flex-col h-full bg-white animate-fadeIn overflow-y-auto pb-10">
+          <div className="p-6 flex items-center justify-between border-b border-gray-50">
+            <button onClick={() => setView('orderHistory')} className="p-2 bg-gray-50 rounded-xl">
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h3 className="text-lg font-black tracking-tight">Order Details</h3>
+            <div className="w-10" /> {/* Spacer */}
+          </div>
+
+          <div className="p-8 space-y-8">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Transaction ID</p>
+                <h4 className="text-xl font-black">#{selectedOrder.id.toUpperCase()}</h4>
+                <p className="text-sm text-gray-500 mt-1">{new Date(selectedOrder.date).toLocaleString()}</p>
+              </div>
+              <div className={`px-4 py-2 rounded-2xl font-black text-xs ${selectedOrder.status === OrderStatus.DELIVERED ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700 animate-pulse'}`}>
+                {selectedOrder.status.toUpperCase()}
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 space-y-4">
+               <div className="flex items-center gap-4">
+                 <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-orange-600">
+                   <MapPin className="w-5 h-5" />
+                 </div>
+                 <div>
+                   <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery Address</p>
+                   <p className="text-sm font-bold text-gray-800">{selectedOrder.deliveryAddress}</p>
+                 </div>
+               </div>
+            </div>
+
+            <div>
+              <h5 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4 ml-1">Order Summary</h5>
+              <div className="space-y-4">
+                {selectedOrder.type === 'Marketplace' && selectedOrder.items?.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-4">
+                    <img src={item.product.image} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" />
+                    <div className="flex-1">
+                      <p className="font-bold text-sm">{item.product.name}</p>
+                      <p className="text-xs text-gray-400">Qty: {item.quantity}</p>
+                    </div>
+                    <p className="font-black text-sm">${(item.product.price * item.quantity).toFixed(2)}</p>
+                  </div>
+                ))}
+                
+                {selectedOrder.type === 'Cefane' && (
+                  <div className="p-5 bg-orange-50/50 rounded-3xl border border-orange-100/50">
+                    <div className="flex items-center gap-3 mb-2">
+                      <ClipboardList className="w-4 h-4 text-orange-600" />
+                      <p className="text-xs font-black text-orange-900">Requested Errand</p>
+                    </div>
+                    <p className="text-sm text-orange-800/80 italic leading-relaxed">"{selectedOrder.shoppingList}"</p>
+                    {selectedOrder.budgetLimit && (
+                       <p className="text-[10px] font-black mt-3 text-orange-700 uppercase tracking-widest">Budget Limit: ${selectedOrder.budgetLimit}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-6 space-y-3">
+               <div className="flex justify-between items-center text-gray-400 text-sm font-bold">
+                 <span>Subtotal</span>
+                 <span>${selectedOrder.total.toFixed(2)}</span>
+               </div>
+               <div className="flex justify-between items-center text-gray-400 text-sm font-bold">
+                 <span>Delivery Fee</span>
+                 <span>${selectedOrder.deliveryFee.toFixed(2)}</span>
+               </div>
+               <div className="flex justify-between items-center pt-2">
+                 <span className="text-lg font-black">Total Price</span>
+                 <span className="text-2xl font-black text-orange-600">${(selectedOrder.total + selectedOrder.deliveryFee).toFixed(2)}</span>
+               </div>
+            </div>
+
+            {selectedOrder.status !== OrderStatus.DELIVERED && (
+               <button 
+                 onClick={() => { setActiveOrderId(selectedOrder.id); setView('tracking'); }}
+                 className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3"
+               >
+                 <Truck className="w-5 h-5" /> View Live Tracking
+               </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Nav Bar */}
-      {view !== 'auth' && view !== 'tracking' && view !== 'cefane' && (
+      {view !== 'auth' && view !== 'tracking' && view !== 'cefane' && view !== 'orderDetails' && (
         <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-2xl border-t border-gray-100 px-8 py-5 flex justify-between items-center z-50">
           <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1.5 ${view === 'home' ? 'text-orange-600' : 'text-gray-300'}`}>
             <HomeIcon className="w-6 h-6" />
@@ -547,7 +712,7 @@ const App: React.FC = () => {
             {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{cart.length}</span>}
             <span className="text-[10px] font-black uppercase tracking-tighter">Cart</span>
           </button>
-          <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1.5 ${view === 'profile' ? 'text-orange-600' : 'text-gray-300'}`}>
+          <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1.5 ${view === 'profile' || view === 'orderHistory' ? 'text-orange-600' : 'text-gray-300'}`}>
             <UserIcon className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-tighter">Profile</span>
           </button>
@@ -556,13 +721,13 @@ const App: React.FC = () => {
 
       {/* Re-implementing Marketplace and Vendor briefly for completeness */}
       {view === 'marketplace' && (
-        <div className="p-5 pb-24 space-y-6">
+        <div className="p-5 pb-24 space-y-6 overflow-y-auto">
           <div className="flex items-center">
             <button onClick={() => setView('home')} className="mr-3"><ArrowLeft className="w-6 h-6" /></button>
             <h2 className="text-2xl font-black">All Vendors</h2>
           </div>
           {MOCK_VENDORS.map(v => (
-             <div key={v.id} onClick={() => { setSelectedVendor(v); setView('vendor'); }} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100">
+             <div key={v.id} onClick={() => { setSelectedVendor(v); setView('vendor'); }} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer">
                <img src={v.image} className="w-full h-40 object-cover" alt="" />
                <div className="p-4 flex justify-between items-center">
                  <div>
@@ -577,7 +742,7 @@ const App: React.FC = () => {
       )}
 
       {view === 'vendor' && selectedVendor && (
-        <div className="pb-24">
+        <div className="pb-24 overflow-y-auto">
           <div className="h-64 relative">
              <img src={selectedVendor.image} className="w-full h-full object-cover" alt="" />
              <button onClick={() => setView('marketplace')} className="absolute top-6 left-6 bg-white p-3 rounded-2xl shadow-xl"><ArrowLeft className="w-6 h-6" /></button>
@@ -602,7 +767,7 @@ const App: React.FC = () => {
       )}
 
       {view === 'profile' && user && (
-        <div className="p-8 space-y-10 animate-fadeIn">
+        <div className="p-8 space-y-10 animate-fadeIn overflow-y-auto pb-24">
           <div className="flex items-center gap-6">
             <div className="w-24 h-24 rounded-[32px] overflow-hidden shadow-xl border-4 border-white">
               <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop" className="w-full h-full object-cover" alt="" />
@@ -614,9 +779,19 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-3">
+             <div 
+               onClick={() => setView('orderHistory')}
+               className="flex items-center justify-between p-5 bg-white rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+             >
+               <div className="flex items-center gap-4">
+                 <div className="text-orange-500"><Clock /></div>
+                 <span className="font-bold text-gray-800">Order History</span>
+               </div>
+               <span className="text-xs text-gray-300 font-bold">{orders.length} orders</span>
+             </div>
+
              {[
-               { icon: <Clock />, label: "Order History", val: "12 orders" },
-               { icon: <MapPin />, label: "Saved Addresses", val: "3 saved" },
+               { icon: <MapPin />, label: "Saved Addresses", val: "1 saved" },
                { icon: <AlertCircle />, label: "Support", val: "24/7" },
              ].map((item, i) => (
                <div key={i} className="flex items-center justify-between p-5 bg-white rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors">
@@ -639,7 +814,7 @@ const App: React.FC = () => {
       )}
 
       {view === 'cart' && (
-        <div className="p-5 flex flex-col h-full bg-white">
+        <div className="p-5 flex flex-col h-full bg-white overflow-y-auto">
           <div className="flex items-center mb-6">
             <button onClick={() => setView('home')} className="mr-3"><ArrowLeft className="w-6 h-6" /></button>
             <h2 className="text-2xl font-black">My Cart</h2>
@@ -650,7 +825,7 @@ const App: React.FC = () => {
               <p className="font-bold">Your cart is empty</p>
             </div>
           ) : (
-            <div className="flex-1 space-y-4">
+            <div className="flex-1 space-y-4 pb-20">
                {cart.map(item => (
                  <div key={item.product.id} className="flex gap-4 p-4 bg-gray-50 rounded-3xl items-center">
                     <img src={item.product.image} className="w-16 h-16 rounded-2xl object-cover" alt="" />
@@ -665,7 +840,7 @@ const App: React.FC = () => {
                     </div>
                  </div>
                ))}
-               <div className="mt-auto pt-10 space-y-4">
+               <div className="mt-10 space-y-4">
                   <div className="flex justify-between font-bold text-gray-400"><span>Subtotal</span><span>${cart.reduce((a,b)=>a+(b.product.price*b.quantity),0).toFixed(2)}</span></div>
                   <div className="flex justify-between text-2xl font-black"><span>Total</span><span>${(cart.reduce((a,b)=>a+(b.product.price*b.quantity),0)+2.5).toFixed(2)}</span></div>
                   <button onClick={handleCheckout} className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-2xl active:scale-95 transition-transform">Checkout</button>
