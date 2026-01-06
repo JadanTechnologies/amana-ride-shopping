@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ShoppingBag, 
@@ -32,7 +33,8 @@ import {
   Camera,
   Image as ImageIcon,
   Trash2,
-  Upload
+  Upload,
+  Edit2
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -79,6 +81,7 @@ const App: React.FC = () => {
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [showNewAddressForm, setShowNewAddressForm] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [eta, setEta] = useState<number>(15);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -177,36 +180,60 @@ const App: React.FC = () => {
     }
   };
 
+  const startEditingCefane = (order: Order) => {
+    setEditingOrderId(order.id);
+    setCefaneInput(order.shoppingList || '');
+    setCefaneBudget(order.budgetLimit?.toString() || '');
+    setCefaneImage(order.listImage || null);
+    // Find address matching details to set as selected
+    const addr = savedAddresses.find(a => a.details === order.deliveryAddress);
+    if (addr) setSelectedAddressId(addr.id);
+    setView('cefane');
+  };
+
   const processCefaneRequest = async () => {
     if (!cefaneInput.trim() && !cefaneImage) return;
     setIsProcessingCefane(true);
     
     try {
+      // Create a new GoogleGenAI instance right before making an API call to ensure it always uses the most up-to-date API key
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `User request: "${cefaneInput}". Budget: ${cefaneBudget || 'Not specified'}. ${cefaneImage ? 'User provided an image list.' : ''} Just confirm you understand.`,
+        contents: `${editingOrderId ? 'Updating existing' : 'New'} User request: "${cefaneInput}". Budget: ${cefaneBudget || 'Not specified'}. ${cefaneImage ? 'User provided an image list.' : ''} Just confirm you understand.`,
       });
 
-      const newOrder: Order = {
-        id: `cef_${Math.random().toString(36).substr(2, 9)}`,
-        type: 'Cefane',
-        status: OrderStatus.PENDING,
-        date: new Date().toISOString(),
-        total: 0,
-        deliveryFee: 5.0, // Base errand fee
-        shoppingList: cefaneInput,
-        listImage: cefaneImage || undefined,
-        budgetLimit: cefaneBudget ? parseFloat(cefaneBudget) : undefined,
-        deliveryAddress: currentAddress?.details || "Unknown Address",
-      };
+      if (editingOrderId) {
+        setOrders(prev => prev.map(o => o.id === editingOrderId ? {
+          ...o,
+          shoppingList: cefaneInput,
+          listImage: cefaneImage || undefined,
+          budgetLimit: cefaneBudget ? parseFloat(cefaneBudget) : undefined,
+          deliveryAddress: currentAddress?.details || o.deliveryAddress,
+        } : o));
+        setActiveOrderId(editingOrderId);
+      } else {
+        const newOrder: Order = {
+          id: `cef_${Math.random().toString(36).substr(2, 9)}`,
+          type: 'Cefane',
+          status: OrderStatus.PENDING,
+          date: new Date().toISOString(),
+          total: 0,
+          deliveryFee: 5.0,
+          shoppingList: cefaneInput,
+          listImage: cefaneImage || undefined,
+          budgetLimit: cefaneBudget ? parseFloat(cefaneBudget) : undefined,
+          deliveryAddress: currentAddress?.details || "Unknown Address",
+        };
+        setOrders(prev => [newOrder, ...prev]);
+        setActiveOrderId(newOrder.id);
+      }
       
-      setOrders(prev => [newOrder, ...prev]);
-      setActiveOrderId(newOrder.id);
       setEta(15); 
       setCefaneInput('');
       setCefaneBudget('');
       setCefaneImage(null);
+      setEditingOrderId(null);
       setShowCefaneConfirm(false);
       setView('tracking');
     } catch (error) {
@@ -325,207 +352,207 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-gray-50 font-sans text-gray-900 shadow-2xl relative overflow-hidden flex flex-col">
-      {/* Views */}
-      {view === 'auth' && (
-        <div className="min-h-screen bg-orange-50 flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
-          <div className="bg-white p-8 rounded-[40px] shadow-2xl max-w-sm w-full border border-orange-100">
-            <div className="w-24 h-24 bg-orange-500 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl rotate-3">
-              <ShoppingBag className="text-white w-12 h-12" />
-            </div>
-            <h1 className="text-4xl font-black text-gray-900 mb-2 tracking-tight">Amana Rides</h1>
-            <p className="text-gray-500 mb-8 font-medium">Digital Marketplace & E-Errand</p>
-            
-            <div className="space-y-4">
-              <button 
-                onClick={login}
-                className="w-full bg-orange-600 text-white font-bold py-5 rounded-2xl shadow-lg hover:bg-orange-700 transition-all transform hover:scale-[1.02] active:scale-95"
-              >
-                Demo Login
-              </button>
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-0 sm:p-4">
+      <div className="w-full max-w-md h-full sm:h-[850px] bg-gray-50 font-sans text-gray-900 sm:rounded-[48px] shadow-2xl relative overflow-hidden flex flex-col">
+        {/* Views */}
+        {view === 'auth' && (
+          <div className="h-full bg-orange-50 flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
+            <div className="bg-white p-8 rounded-[40px] shadow-2xl max-w-sm w-full border border-orange-100">
+              <div className="w-24 h-24 bg-orange-500 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl rotate-3">
+                <ShoppingBag className="text-white w-12 h-12" />
+              </div>
+              <h1 className="text-4xl font-black text-gray-900 mb-2 tracking-tight">Amana Rides</h1>
+              <p className="text-gray-500 mb-8 font-medium">Digital Marketplace & E-Errand</p>
               
-              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex gap-3 text-left">
-                <Info className="text-blue-500 shrink-0 w-5 h-5" />
-                <div className="text-xs">
-                  <p className="font-bold text-blue-900 mb-1">Demo Credentials</p>
-                  <p className="text-blue-700">Email: demo@amana.com</p>
-                  <p className="text-blue-700">Phone: +233 24 000 0000</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {view === 'home' && (
-        <div className="p-5 space-y-6 pb-24 overflow-y-auto animate-fadeIn">
-          <header className="flex items-center justify-between">
-            <div className="cursor-pointer" onClick={() => setShowAddressPicker(true)}>
-              <h2 className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Delivering to</h2>
-              <div className="flex items-center text-gray-900 font-bold">
-                <MapPin className="w-4 h-4 text-orange-600 mr-1" />
-                <span className="text-sm truncate max-w-[150px]">{currentAddress?.label || 'Select Address'}</span>
-                <ChevronRight className="w-3 h-3 ml-1 rotate-90" />
-              </div>
-            </div>
-            <button onClick={() => setView('profile')} className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden">
-              <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" className="w-full h-full object-cover" alt="" />
-            </button>
-          </header>
-
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 group-focus-within:text-orange-500 transition-colors" />
-            <input 
-              type="text" 
-              placeholder="Food, Groceries, Errands..." 
-              className="w-full bg-white border border-gray-100 py-4 pl-12 pr-4 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
-            />
-          </div>
-
-          <div 
-            onClick={() => setView('cefane')}
-            className="bg-orange-600 rounded-[32px] p-7 text-white relative overflow-hidden shadow-2xl cursor-pointer group hover:scale-[1.01] transition-transform"
-          >
-            <div className="relative z-10">
-              <div className="bg-orange-500/50 w-fit p-2 rounded-xl mb-3">
-                <MessageSquare className="w-6 h-6" />
-              </div>
-              <h3 className="text-2xl font-black mb-1">Cefane E-Errand</h3>
-              <p className="text-orange-100 mb-5 text-sm max-w-[200px]">Describe anything, we'll buy and deliver it.</p>
-              <span className="bg-white text-orange-600 font-bold px-6 py-2 rounded-full text-xs shadow-xl">Start Errand</span>
-            </div>
-            <div className="absolute -bottom-10 -right-10 w-48 h-48 bg-orange-500/30 rounded-full blur-2xl group-hover:bg-orange-400/40 transition-colors" />
-            <ClipboardList className="absolute top-10 right-5 w-24 h-24 text-white/10 -rotate-12" />
-          </div>
-
-          {activeOrder && activeOrder.status !== OrderStatus.DELIVERED && (
-            <div 
-              onClick={() => setView('tracking')}
-              className="bg-white p-4 rounded-3xl border border-orange-100 shadow-sm flex items-center justify-between cursor-pointer animate-fadeIn"
-            >
-              <div className="flex items-center gap-4">
-                <div className="bg-orange-50 p-2 rounded-xl">
-                  <Truck className="w-6 h-6 text-orange-600" />
-                </div>
-                <div>
-                  <h4 className="font-black text-sm">Active Order Tracking</h4>
-                  <p className="text-xs text-gray-400">{activeOrder.status} • ETA: {eta} mins</p>
-                </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-orange-600" />
-            </div>
-          )}
-
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-black text-xl text-gray-900 tracking-tight">Marketplace</h3>
-              <span className="text-orange-600 font-bold text-xs">View All</span>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {['Restaurants', 'Supermarkets', 'Pharmacies', 'Retail stores'].map((cat) => (
-                <div 
-                  key={cat}
-                  onClick={() => setView('marketplace')}
-                  className="bg-white p-5 rounded-[28px] shadow-sm border border-gray-100 hover:border-orange-200 transition-all cursor-pointer group"
+              <div className="space-y-4">
+                <button 
+                  onClick={login}
+                  className="w-full bg-orange-600 text-white font-bold py-5 rounded-2xl shadow-lg hover:bg-orange-700 transition-all transform hover:scale-[1.02] active:scale-95"
                 >
-                  <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    {cat === 'Restaurants' && <Truck className="text-orange-600 w-6 h-6" />}
-                    {cat === 'Supermarkets' && <ShoppingBag className="text-orange-600 w-6 h-6" />}
-                    {cat === 'Pharmacies' && <AlertCircle className="text-orange-600 w-6 h-6" />}
-                    {cat === 'Retail stores' && <Package className="text-orange-600 w-6 h-6" />}
+                  Demo Login
+                </button>
+                
+                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex gap-3 text-left">
+                  <Info className="text-blue-500 shrink-0 w-5 h-5" />
+                  <div className="text-xs">
+                    <p className="font-bold text-blue-900 mb-1">Demo Credentials</p>
+                    <p className="text-blue-700">Email: demo@amana.com</p>
+                    <p className="text-blue-700">Phone: +233 24 000 0000</p>
                   </div>
-                  <p className="font-black text-gray-800 text-sm tracking-tight">{cat}</p>
-                  <p className="text-[10px] text-gray-400 mt-1">Explore stores</p>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {view === 'cefane' && (
-        <div className="p-5 flex flex-col h-full bg-white animate-fadeIn pb-24 overflow-y-auto">
-          <div className="flex items-center mb-6">
-            <button onClick={() => setView('home')} className="p-2 -ml-2 mr-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
-            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Cefane Concierge</h2>
-          </div>
-          
-          <div className="flex-1 flex flex-col space-y-6">
-            <div className="bg-orange-50 p-6 rounded-[32px] border border-orange-100">
-              <h3 className="text-xl font-bold text-orange-900 mb-2">Shopping Assistant</h3>
-              <p className="text-orange-700/70 text-sm leading-relaxed">Describe your items or upload a picture of your physical shopping list.</p>
+        {view === 'home' && (
+          <div className="p-5 space-y-6 pb-24 h-full overflow-y-auto animate-fadeIn no-scrollbar">
+            <header className="flex items-center justify-between">
+              <div className="cursor-pointer" onClick={() => setShowAddressPicker(true)}>
+                <h2 className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Delivering to</h2>
+                <div className="flex items-center text-gray-900 font-bold">
+                  <MapPin className="w-4 h-4 text-orange-600 mr-1" />
+                  <span className="text-sm truncate max-w-[150px]">{currentAddress?.label || 'Select Address'}</span>
+                  <ChevronRight className="w-3 h-3 ml-1 rotate-90" />
+                </div>
+              </div>
+              <button onClick={() => setView('profile')} className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden">
+                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" className="w-full h-full object-cover" alt="" />
+              </button>
+            </header>
+
+            <div className="relative group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 group-focus-within:text-orange-500 transition-colors" />
+              <input 
+                type="text" 
+                placeholder="Food, Groceries, Errands..." 
+                className="w-full bg-white border border-gray-100 py-4 pl-12 pr-4 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+              />
             </div>
 
             <div 
-              onClick={() => setShowAddressPicker(true)}
-              className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors shadow-sm"
+              onClick={() => { setEditingOrderId(null); setView('cefane'); }}
+              className="bg-orange-600 rounded-[32px] p-7 text-white relative overflow-hidden shadow-2xl cursor-pointer group hover:scale-[1.01] transition-transform"
             >
-              <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
-                <MapPin className="text-orange-600 w-5 h-5" />
+              <div className="relative z-10">
+                <div className="bg-orange-500/50 w-fit p-2 rounded-xl mb-3">
+                  <MessageSquare className="w-6 h-6" />
+                </div>
+                <h3 className="text-2xl font-black mb-1">Cefane E-Errand</h3>
+                <p className="text-orange-100 mb-5 text-sm max-w-[200px]">Describe anything, we'll buy and deliver it.</p>
+                <span className="bg-white text-orange-600 font-bold px-6 py-2 rounded-full text-xs shadow-xl">Start Errand</span>
               </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery Address</p>
-                <p className="text-sm font-bold text-gray-800">{currentAddress?.label || 'Select Address'}</p>
-                <p className="text-[10px] text-gray-400 truncate max-w-[200px]">{currentAddress?.details}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
+              <div className="absolute -bottom-10 -right-10 w-48 h-48 bg-orange-500/30 rounded-full blur-2xl group-hover:bg-orange-400/40 transition-colors" />
+              <ClipboardList className="absolute top-10 right-5 w-24 h-24 text-white/10 -rotate-12" />
             </div>
+
+            {activeOrder && activeOrder.status !== OrderStatus.DELIVERED && (
+              <div 
+                onClick={() => setView('tracking')}
+                className="bg-white p-4 rounded-3xl border border-orange-100 shadow-sm flex items-center justify-between cursor-pointer animate-fadeIn"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-orange-50 p-2 rounded-xl">
+                    <Truck className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-sm">Active Order Tracking</h4>
+                    <p className="text-xs text-gray-400">{activeOrder.status} • ETA: {eta} mins</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-orange-600" />
+              </div>
+            )}
 
             <div>
-              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Tell us what to buy</label>
-              <div className="relative">
-                <textarea 
-                  placeholder="e.g., '2 cartons of fresh milk, 1 loaf of wheat bread, and a bag of charcoal...'"
-                  className="w-full min-h-[160px] bg-gray-50 rounded-[32px] p-6 pr-16 text-gray-800 placeholder:text-gray-300 focus:ring-4 focus:ring-orange-100 focus:outline-none resize-none border-none text-lg shadow-inner"
-                  value={cefaneInput}
-                  onChange={(e) => setCefaneInput(e.target.value)}
-                />
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-6 right-6 p-3 bg-white rounded-2xl shadow-xl border border-gray-100 text-orange-600 active:scale-95 transition-all hover:bg-orange-50"
-                  title="Upload image"
-                >
-                  <Camera className="w-6 h-6" />
-                </button>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  accept="image/*" 
-                  onChange={handleImageUpload} 
-                />
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-xl text-gray-900 tracking-tight">Marketplace</h3>
+                <span className="text-orange-600 font-bold text-xs">View All</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {['Restaurants', 'Supermarkets', 'Pharmacies', 'Retail stores'].map((cat) => (
+                  <div 
+                    key={cat}
+                    onClick={() => setView('marketplace')}
+                    className="bg-white p-5 rounded-[28px] shadow-sm border border-gray-100 hover:border-orange-200 transition-all cursor-pointer group"
+                  >
+                    <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                      {cat === 'Restaurants' && <Truck className="text-orange-600 w-6 h-6" />}
+                      {cat === 'Supermarkets' && <ShoppingBag className="text-orange-600 w-6 h-6" />}
+                      {cat === 'Pharmacies' && <AlertCircle className="text-orange-600 w-6 h-6" />}
+                      {cat === 'Retail stores' && <Package className="text-orange-600 w-6 h-6" />}
+                    </div>
+                    <p className="font-black text-gray-800 text-sm tracking-tight">{cat}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Explore stores</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'cefane' && (
+          <div className="p-5 flex flex-col h-full bg-white animate-fadeIn pb-24 overflow-y-auto no-scrollbar">
+            <div className="flex items-center mb-6">
+              <button onClick={() => { setEditingOrderId(null); setView('home'); }} className="p-2 -ml-2 mr-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
+              <h2 className="text-2xl font-black text-gray-900 tracking-tight">{editingOrderId ? 'Edit Errand' : 'Cefane Concierge'}</h2>
+            </div>
+            
+            <div className="flex-1 flex flex-col space-y-6">
+              <div className="bg-orange-50 p-6 rounded-[32px] border border-orange-100">
+                <h3 className="text-xl font-bold text-orange-900 mb-2">{editingOrderId ? 'Modify your list' : 'Shopping Assistant'}</h3>
+                <p className="text-orange-700/70 text-sm leading-relaxed">Describe your items or upload a picture of your physical shopping list.</p>
               </div>
 
-              {cefaneImage ? (
-                <div className="mt-4 p-5 bg-orange-50 rounded-[32px] border border-orange-100 relative group animate-fadeIn shadow-sm">
-                   <div className="flex items-center justify-between mb-3">
-                     <div className="flex items-center gap-2">
-                       <ImageIcon className="w-4 h-4 text-orange-600" />
-                       <p className="text-[10px] font-black text-orange-900 uppercase tracking-widest">Shopping List Image</p>
-                     </div>
-                     <button 
-                      onClick={() => setCefaneImage(null)}
-                      className="p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 active:scale-90 transition-all"
-                     >
-                       <X className="w-4 h-4" />
-                     </button>
-                   </div>
-                   <div className="relative h-48 w-full rounded-2xl overflow-hidden shadow-lg border-2 border-white">
-                     <img src={cefaneImage} className="w-full h-full object-cover" alt="Shopping List Preview" />
-                   </div>
+              <div 
+                onClick={() => setShowAddressPicker(true)}
+                className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors shadow-sm"
+              >
+                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <MapPin className="text-orange-600 w-5 h-5" />
                 </div>
-              ) : (
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="mt-4 p-4 border-2 border-dashed border-gray-200 rounded-[24px] flex flex-col items-center justify-center gap-2 text-gray-400 cursor-pointer hover:border-orange-300 transition-colors"
-                >
-                  <Upload className="w-6 h-6" />
-                  <span className="text-xs font-bold">Attach photo of handwritten list (Optional)</span>
+                <div className="flex-1">
+                  <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery Address</p>
+                  <p className="text-sm font-bold text-gray-800">{currentAddress?.label || 'Select Address'}</p>
+                  <p className="text-[10px] text-gray-400 truncate max-w-[200px]">{currentAddress?.details}</p>
                 </div>
-              )}
-            </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </div>
 
-            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Tell us what to buy</label>
+                <div className="relative">
+                  <textarea 
+                    placeholder="e.g., '2 cartons of fresh milk, 1 loaf of wheat bread, and a bag of charcoal...'"
+                    className="w-full min-h-[160px] bg-gray-50 rounded-[32px] p-6 pr-16 text-gray-800 placeholder:text-gray-300 focus:ring-4 focus:ring-orange-100 focus:outline-none resize-none border-none text-lg shadow-inner"
+                    value={cefaneInput}
+                    onChange={(e) => setCefaneInput(e.target.value)}
+                  />
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-6 right-6 p-3 bg-white rounded-2xl shadow-xl border border-gray-100 text-orange-600 active:scale-95 transition-all hover:bg-orange-50"
+                    title="Upload image"
+                  >
+                    <Camera className="w-6 h-6" />
+                  </button>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept="image/*" 
+                    onChange={handleImageUpload} 
+                  />
+                </div>
+
+                {cefaneImage ? (
+                  <div className="mt-4 p-5 bg-orange-50 rounded-[32px] border border-orange-100 relative group animate-fadeIn shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4 text-orange-600" />
+                        <p className="text-[10px] font-black text-orange-900 uppercase tracking-widest">Shopping List Image</p>
+                      </div>
+                      <button 
+                        onClick={() => setCefaneImage(null)}
+                        className="p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 active:scale-90 transition-all"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="relative h-48 w-full rounded-2xl overflow-hidden shadow-lg border-2 border-white">
+                      <img src={cefaneImage} className="w-full h-full object-cover" alt="Shopping List Preview" />
+                    </div>
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="mt-4 p-4 border-2 border-dashed border-gray-200 rounded-[24px] flex flex-col items-center justify-center gap-2 text-gray-400 cursor-pointer hover:border-orange-300 transition-colors"
+                  >
+                    <Upload className="w-6 h-6" />
+                    <span className="text-xs font-bold">Attach photo of list (Optional)</span>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Max Budget (Optional)</label>
                 <div className="relative group">
@@ -539,638 +566,657 @@ const App: React.FC = () => {
                   />
                 </div>
               </div>
-            </div>
 
-            <button 
-              onClick={() => setShowCefaneConfirm(true)}
-              disabled={(!cefaneInput.trim() && !cefaneImage) || isProcessingCefane}
-              className={`mt-4 w-full py-5 rounded-[24px] font-black text-white shadow-2xl flex items-center justify-center gap-2 transition-all active:scale-95 ${(!cefaneInput.trim() && !cefaneImage) ? 'bg-gray-200' : 'bg-orange-600 hover:bg-orange-700'}`}
-            >
-              {isProcessingCefane ? "Analyzing List..." : "Send Request"} <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Address Picker Modal */}
-      {showAddressPicker && (
-        <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white w-full max-w-md rounded-t-[48px] p-8 shadow-2xl animate-slideUp max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-2xl font-black tracking-tight">Your Addresses</h3>
-              <button onClick={() => setShowAddressPicker(false)} className="p-2 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar">
-              {savedAddresses.map(addr => (
-                <div 
-                  key={addr.id}
-                  onClick={() => { setSelectedAddressId(addr.id); setShowAddressPicker(false); }}
-                  className={`p-5 rounded-[28px] border-2 transition-all cursor-pointer flex items-center gap-4 ${selectedAddressId === addr.id ? 'border-orange-500 bg-orange-50' : 'border-gray-100 hover:border-orange-200 bg-white'}`}
-                >
-                  <div className={`p-3 rounded-2xl ${selectedAddressId === addr.id ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                    <HomeIcon className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1">
-                    <p className={`font-black text-sm ${selectedAddressId === addr.id ? 'text-orange-900' : 'text-gray-900'}`}>{addr.label}</p>
-                    <p className="text-[10px] text-gray-500 font-medium truncate max-w-[200px]">{addr.details}</p>
-                  </div>
-                  {selectedAddressId === addr.id && <CheckCircle2 className="w-5 h-5 text-orange-600" />}
-                </div>
-              ))}
-              
               <button 
-                onClick={() => setShowNewAddressForm(true)}
-                className="w-full p-5 rounded-[28px] border-2 border-dashed border-gray-200 hover:border-orange-300 transition-all flex items-center justify-center gap-3 text-gray-400 font-bold"
+                onClick={() => setShowCefaneConfirm(true)}
+                disabled={(!cefaneInput.trim() && !cefaneImage) || isProcessingCefane}
+                className={`mt-4 w-full py-5 rounded-[24px] font-black text-white shadow-2xl flex items-center justify-center gap-2 transition-all active:scale-95 ${(!cefaneInput.trim() && !cefaneImage) ? 'bg-gray-200' : 'bg-orange-600 hover:bg-orange-700'}`}
               >
-                <Plus className="w-5 h-5" /> Add New Address
+                {isProcessingCefane ? "Processing..." : (editingOrderId ? "Save Changes" : "Send Request")} <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* New Address Form Modal */}
-      {showNewAddressForm && (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="bg-white w-full rounded-[48px] p-10 shadow-2xl animate-scaleIn">
-            <h3 className="text-3xl font-black tracking-tight mb-2">New Address</h3>
-            <p className="text-gray-400 font-medium mb-8">Where should we deliver?</p>
-            
-            <div className="space-y-6">
-              <div>
-                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Label</label>
-                <input 
-                  placeholder="e.g., Mom's House..."
-                  className="w-full bg-gray-50 rounded-2xl py-4 px-6 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold"
-                  value={newAddrLabel}
-                  onChange={(e) => setNewAddrLabel(e.target.value)}
-                />
+        {/* Address Picker Modal */}
+        {showAddressPicker && (
+          <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-white w-full max-w-md rounded-t-[48px] p-8 shadow-2xl animate-slideUp max-h-[85vh] flex flex-col">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-black tracking-tight">Your Addresses</h3>
+                <button onClick={() => setShowAddressPicker(false)} className="p-2 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
               </div>
-              <div>
-                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Details</label>
-                <textarea 
-                  placeholder="House number, Street name..."
-                  className="w-full bg-gray-50 rounded-2xl py-4 px-6 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold min-h-[100px] resize-none"
-                  value={newAddrDetails}
-                  onChange={(e) => setNewAddrDetails(e.target.value)}
-                />
-              </div>
-            </div>
 
-            <div className="mt-10 flex flex-col gap-3">
-              <button 
-                onClick={addNewAddress}
-                className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-transform"
-              >
-                Save & Select
-              </button>
-              <button 
-                onClick={() => setShowNewAddressForm(false)}
-                className="w-full py-4 text-gray-400 font-black tracking-tight"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Feedback Modal */}
-      {showFeedbackModal && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/70 backdrop-blur-lg animate-fadeIn">
-          <div className="bg-white w-full max-w-sm rounded-[48px] p-10 shadow-2xl animate-scaleIn text-center">
-            <div className="w-20 h-20 bg-orange-100 rounded-[28px] flex items-center justify-center mx-auto mb-6 transform -rotate-3">
-              <Star className="text-orange-600 w-10 h-10 fill-orange-600" />
-            </div>
-            <h3 className="text-3xl font-black tracking-tight mb-2">Service Delivered!</h3>
-            <p className="text-gray-500 font-medium mb-8">How was your experience with Amana Rides?</p>
-            
-            <div className="flex justify-center gap-2 mb-8">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button 
-                  key={s} 
-                  onClick={() => setRating(s)}
-                  className={`p-1 transition-all transform active:scale-90 ${rating >= s ? 'scale-110' : 'scale-100 opacity-30'}`}
-                >
-                  <Star className={`w-10 h-10 ${rating >= s ? 'text-orange-500 fill-orange-500' : 'text-gray-300'}`} />
-                </button>
-              ))}
-            </div>
-
-            <textarea 
-              placeholder="Leave a comment (optional)..."
-              className="w-full bg-gray-50 rounded-3xl p-5 border-none focus:ring-4 focus:ring-orange-100 outline-none font-medium text-sm min-h-[100px] resize-none mb-8"
-              value={feedbackText}
-              onChange={(e) => setFeedbackText(e.target.value)}
-            />
-
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={submitFeedback}
-                disabled={rating === 0}
-                className="w-full py-5 bg-orange-600 text-white font-black rounded-[32px] shadow-xl active:scale-95 transition-transform disabled:opacity-50 disabled:grayscale"
-              >
-                Submit Feedback
-              </button>
-              <button 
-                onClick={() => { setShowFeedbackModal(false); setView('home'); }}
-                className="w-full py-3 text-gray-400 font-bold text-sm tracking-tight"
-              >
-                Maybe later
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCefaneConfirm && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-fadeIn">
-          <div className="bg-white w-full rounded-[48px] p-10 shadow-2xl animate-scaleIn max-h-[90vh] overflow-y-auto">
-            <div className="text-center mb-8">
-              <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-5">
-                <CheckCircle2 className="text-orange-600 w-10 h-10" />
-              </div>
-              <h3 className="text-3xl font-black tracking-tight">Review Errand</h3>
-              <p className="text-gray-500 font-medium mt-1">Ready to send your request?</p>
-            </div>
-            
-            <div className="space-y-6">
-              {cefaneInput.trim() && (
-                <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100">
-                  <div className="flex items-center gap-3 mb-3">
-                    <ClipboardList className="w-4 h-4 text-orange-600" />
-                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Shopping Items</h4>
-                  </div>
-                  <p className="text-gray-800 font-medium text-sm leading-relaxed whitespace-pre-wrap italic">"{cefaneInput}"</p>
-                </div>
-              )}
-
-              {cefaneImage && (
-                <div className="bg-orange-50/50 p-6 rounded-[32px] border border-orange-100/50">
-                  <div className="flex items-center gap-3 mb-3">
-                    <ImageIcon className="w-4 h-4 text-orange-600" />
-                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Attached List Photo</h4>
-                  </div>
-                  <img src={cefaneImage} className="w-full h-44 object-cover rounded-2xl shadow-md border-2 border-white" alt="List Preview" />
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Wallet className="w-4 h-4 text-green-600" />
-                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Budget</h4>
-                  </div>
-                  <p className="text-gray-900 font-black">{cefaneBudget ? `$${parseFloat(cefaneBudget).toFixed(2)}` : 'Unlimited'}</p>
-                </div>
-                <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100">
-                  <div className="flex items-center gap-3 mb-2">
-                    <MapPin className="w-4 h-4 text-red-600" />
-                    <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">To</h4>
-                  </div>
-                  <p className="text-gray-900 font-black text-xs truncate">{currentAddress?.label || 'Unknown'}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-10 flex flex-col gap-3">
-              <button 
-                onClick={processCefaneRequest}
-                disabled={isProcessingCefane}
-                className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-3 disabled:opacity-50"
-              >
-                {isProcessingCefane ? 'Connecting...' : 'Confirm & Place Request'} <Send className="w-5 h-5" />
-              </button>
-              <button 
-                onClick={() => setShowCefaneConfirm(false)}
-                className="w-full py-4 text-gray-400 font-black tracking-tight"
-              >
-                Wait, I need to edit
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {view === 'tracking' && activeOrder && (
-        <div className="h-full flex flex-col bg-white overflow-hidden animate-fadeIn">
-          <div className="flex-1 relative">
-            <MapContainer order={activeOrder} onProgressUpdate={handleProgressUpdate} />
-            <button 
-              onClick={() => setView('home')} 
-              className="absolute top-6 left-6 bg-white p-4 rounded-2xl shadow-2xl z-20 border border-gray-100 active:scale-95"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            {activeOrder.status === OrderStatus.OUT_FOR_DELIVERY && (
-              <div className="absolute top-6 right-6 bg-orange-600 text-white px-4 py-2 rounded-xl shadow-xl z-20 font-black text-xs animate-pulse">
-                LIVE TRACKING
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-t-[48px] -mt-10 relative z-30 p-8 shadow-[0_-20px_60px_rgba(0,0,0,0.15)] flex flex-col gap-6">
-            <div className="w-16 h-1.5 bg-gray-100 rounded-full mx-auto" />
-            
-            {activeOrder.status === OrderStatus.OUT_FOR_DELIVERY ? (
-              <div className="bg-orange-50 p-5 rounded-[32px] border border-orange-100 flex items-center gap-4 animate-fadeIn">
-                <img src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&h=100&fit=crop" className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md" alt="Rider" />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-black text-orange-900">Kofi Mensah</h4>
-                    <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg shadow-sm">
-                      <Star className="w-3 h-3 text-orange-500 fill-orange-500" />
-                      <span className="text-[10px] font-black">4.9</span>
+              <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar">
+                {savedAddresses.map(addr => (
+                  <div 
+                    key={addr.id}
+                    onClick={() => { setSelectedAddressId(addr.id); setShowAddressPicker(false); }}
+                    className={`p-5 rounded-[28px] border-2 transition-all cursor-pointer flex items-center gap-4 ${selectedAddressId === addr.id ? 'border-orange-500 bg-orange-50' : 'border-gray-100 hover:border-orange-200 bg-white'}`}
+                  >
+                    <div className={`p-3 rounded-2xl ${selectedAddressId === addr.id ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                      <HomeIcon className="w-6 h-6" />
                     </div>
-                  </div>
-                  <p className="text-orange-700/70 text-xs font-bold mt-0.5">Honda Super Cub • GW-402-23</p>
-                  <div className="flex gap-2 mt-2">
-                    <button className="bg-white p-2 rounded-xl shadow-sm text-orange-600 active:scale-90 transition-transform"><Phone className="w-4 h-4" /></button>
-                    <button className="bg-white p-2 rounded-xl shadow-sm text-orange-600 active:scale-90 transition-transform"><MessageSquare className="w-4 h-4" /></button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-[10px] font-black uppercase text-orange-600 tracking-widest bg-orange-50 px-3 py-1 rounded-lg">
-                    {activeOrder.type} Request
-                  </span>
-                  <h3 className="text-3xl font-black text-gray-900 mt-3 tracking-tight">{activeOrder.status}</h3>
-                  <p className="text-gray-400 font-medium mt-1">Order ID: #{activeOrder.id.toUpperCase()}</p>
-                </div>
-                <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center shadow-inner">
-                  <Navigation className="w-10 h-10 text-orange-600 animate-bounce-short" />
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden flex">
-                {Object.values(OrderStatus).map((status, idx) => {
-                  const statuses = Object.values(OrderStatus);
-                  const currentIdx = statuses.indexOf(activeOrder.status);
-                  const isPast = idx <= currentIdx;
-                  return <div key={status} className={`h-full flex-1 transition-all duration-700 ${isPast ? 'bg-orange-500' : 'bg-transparent'}`} />;
-                })}
-              </div>
-              <div className="flex justify-between items-center">
-                <p className="text-xs font-bold text-gray-800">
-                  {activeOrder.status === OrderStatus.DELIVERED ? "Enjoy your items!" : 
-                   `Next: ${Object.values(OrderStatus)[Object.values(OrderStatus).indexOf(activeOrder.status) + 1] || 'Done'}`}
-                </p>
-                <div className="flex items-center gap-2 bg-gray-900 text-white px-3 py-1.5 rounded-xl shadow-lg">
-                  <Clock className="w-3 h-3" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">{activeOrder.status === OrderStatus.DELIVERED ? 'Arrived' : `ETA: ${eta} mins`}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-4">
-              <button 
-                onClick={simulateProgress}
-                className="flex-1 bg-orange-50 text-orange-600 font-black py-4 rounded-2xl border border-orange-100 active:scale-95 transition-transform"
-              >
-                Next Status
-              </button>
-              <button 
-                onClick={() => setView('home')}
-                className="flex-1 bg-gray-900 text-white font-black py-4 rounded-2xl active:scale-95 transition-transform"
-              >
-                Return Home
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {view === 'orderHistory' && (
-        <div className="p-6 pb-24 space-y-6 overflow-y-auto animate-fadeIn">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setView('profile')} className="p-2 bg-white rounded-xl shadow-sm border border-gray-100">
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            <h2 className="text-2xl font-black">Order History</h2>
-          </div>
-          
-          {orders.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 opacity-20">
-              <Clock className="w-20 h-20 mb-4" />
-              <p className="font-bold">No orders yet</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {orders.map(order => (
-                <div 
-                  key={order.id} 
-                  onClick={() => { setSelectedOrderId(order.id); setView('orderDetails'); }}
-                  className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm flex items-center justify-between cursor-pointer hover:scale-[1.01] transition-all"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-2xl ${order.type === 'Cefane' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
-                      {order.type === 'Cefane' ? <Package className="w-6 h-6" /> : <ShoppingBag className="w-6 h-6" />}
-                    </div>
-                    <div>
-                      <h4 className="font-black text-sm">{order.type} #{order.id.slice(-4).toUpperCase()}</h4>
-                      <p className="text-[10px] text-gray-400 font-bold">{new Date(order.date).toLocaleDateString()}</p>
-                      <div className="mt-1">
-                        <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${order.status === OrderStatus.DELIVERED ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                          {order.status}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-black text-sm">${(order.total + order.deliveryFee).toFixed(2)}</p>
-                    <ChevronRight className="w-4 h-4 text-gray-300 ml-auto mt-1" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {view === 'orderDetails' && selectedOrder && (
-        <div className="flex flex-col h-full bg-white animate-fadeIn overflow-y-auto pb-10">
-          <div className="p-6 flex items-center justify-between border-b border-gray-50">
-            <button onClick={() => setView('orderHistory')} className="p-2 bg-gray-50 rounded-xl">
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            <h3 className="text-lg font-black tracking-tight">Order Details</h3>
-            <div className="w-10" /> {/* Spacer */}
-          </div>
-
-          <div className="p-8 space-y-8">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Transaction ID</p>
-                <h4 className="text-xl font-black">#{selectedOrder.id.toUpperCase()}</h4>
-                <p className="text-sm text-gray-500 mt-1">{new Date(selectedOrder.date).toLocaleString()}</p>
-              </div>
-              <div className={`px-4 py-2 rounded-2xl font-black text-xs ${selectedOrder.status === OrderStatus.DELIVERED ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700 animate-pulse'}`}>
-                {selectedOrder.status.toUpperCase()}
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 space-y-4 shadow-sm">
-               <div className="flex items-center gap-4">
-                 <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-orange-600">
-                   <MapPin className="w-5 h-5" />
-                 </div>
-                 <div>
-                   <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery Address</p>
-                   <p className="text-sm font-bold text-gray-800">{selectedOrder.deliveryAddress}</p>
-                 </div>
-               </div>
-            </div>
-
-            <div>
-              <h5 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4 ml-1">Order Summary</h5>
-              <div className="space-y-4">
-                {selectedOrder.type === 'Marketplace' && selectedOrder.items?.map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-4">
-                    <img src={item.product.image} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" />
                     <div className="flex-1">
-                      <p className="font-bold text-sm">{item.product.name}</p>
-                      <p className="text-xs text-gray-400">Qty: {item.quantity}</p>
+                      <p className={`font-black text-sm ${selectedAddressId === addr.id ? 'text-orange-900' : 'text-gray-900'}`}>{addr.label}</p>
+                      <p className="text-[10px] text-gray-500 font-medium truncate max-w-[200px]">{addr.details}</p>
                     </div>
-                    <p className="font-black text-sm">${(item.product.price * item.quantity).toFixed(2)}</p>
+                    {selectedAddressId === addr.id && <CheckCircle2 className="w-5 h-5 text-orange-600" />}
                   </div>
                 ))}
                 
-                {selectedOrder.type === 'Cefane' && (
-                  <div className="p-5 bg-orange-50/50 rounded-3xl border border-orange-100/50 space-y-5">
-                    {selectedOrder.shoppingList && (
-                      <div>
-                        <div className="flex items-center gap-3 mb-2">
-                          <ClipboardList className="w-4 h-4 text-orange-600" />
-                          <p className="text-xs font-black text-orange-900">Requested Errand</p>
-                        </div>
-                        <p className="text-sm text-orange-800/80 italic leading-relaxed whitespace-pre-wrap font-medium">"{selectedOrder.shoppingList}"</p>
-                      </div>
-                    )}
-                    
-                    {selectedOrder.listImage && (
-                      <div>
-                         <div className="flex items-center gap-3 mb-2">
-                          <ImageIcon className="w-4 h-4 text-orange-600" />
-                          <p className="text-xs font-black text-orange-900 uppercase">Handwritten List Photo</p>
-                        </div>
-                        <img src={selectedOrder.listImage} className="w-full h-56 object-cover rounded-2xl shadow-xl border-4 border-white" alt="List" />
-                      </div>
-                    )}
-
-                    {selectedOrder.budgetLimit && (
-                       <p className="text-[10px] font-black mt-3 text-orange-700 uppercase tracking-widest">Budget Limit: ${selectedOrder.budgetLimit}</p>
-                    )}
-                  </div>
-                )}
+                <button 
+                  onClick={() => setShowNewAddressForm(true)}
+                  className="w-full p-5 rounded-[28px] border-2 border-dashed border-gray-200 hover:border-orange-300 transition-all flex items-center justify-center gap-3 text-gray-400 font-bold"
+                >
+                  <Plus className="w-5 h-5" /> Add New Address
+                </button>
               </div>
             </div>
+          </div>
+        )}
 
-            <div className="border-t border-gray-100 pt-6 space-y-3">
-               <div className="flex justify-between items-center text-gray-400 text-sm font-bold">
-                 <span>Subtotal</span>
-                 <span>${selectedOrder.total.toFixed(2)}</span>
-               </div>
-               <div className="flex justify-between items-center text-gray-400 text-sm font-bold">
-                 <span>Delivery Fee</span>
-                 <span>${selectedOrder.deliveryFee.toFixed(2)}</span>
-               </div>
-               <div className="flex justify-between items-center pt-2">
-                 <span className="text-lg font-black">Total Price</span>
-                 <span className="text-2xl font-black text-orange-600">${(selectedOrder.total + selectedOrder.deliveryFee).toFixed(2)}</span>
-               </div>
+        {/* New Address Form Modal */}
+        {showNewAddressForm && (
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fadeIn">
+            <div className="bg-white w-full rounded-[48px] p-10 shadow-2xl animate-scaleIn">
+              <h3 className="text-3xl font-black tracking-tight mb-2">New Address</h3>
+              <p className="text-gray-400 font-medium mb-8">Where should we deliver?</p>
+              
+              <div className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Label</label>
+                  <input 
+                    placeholder="e.g., Mom's House..."
+                    className="w-full bg-gray-50 rounded-2xl py-4 px-6 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold"
+                    value={newAddrLabel}
+                    onChange={(e) => setNewAddrLabel(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Details</label>
+                  <textarea 
+                    placeholder="House number, Street name..."
+                    className="w-full bg-gray-50 rounded-2xl py-4 px-6 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold min-h-[100px] resize-none"
+                    value={newAddrDetails}
+                    onChange={(e) => setNewAddrDetails(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-10 flex flex-col gap-3">
+                <button 
+                  onClick={addNewAddress}
+                  className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-transform"
+                >
+                  Save & Select
+                </button>
+                <button 
+                  onClick={() => setShowNewAddressForm(false)}
+                  className="w-full py-4 text-gray-400 font-black tracking-tight"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-
-            {selectedOrder.status !== OrderStatus.DELIVERED && (
-               <button 
-                 onClick={() => { setActiveOrderId(selectedOrder.id); setView('tracking'); }}
-                 className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3"
-               >
-                 <Truck className="w-5 h-5" /> View Live Tracking
-               </button>
-            )}
-            
-            {selectedOrder.status === OrderStatus.DELIVERED && (
-              <button 
-                onClick={() => setShowFeedbackModal(true)}
-                className="w-full py-5 bg-white text-orange-600 border-2 border-orange-600 font-black rounded-3xl active:scale-95 transition-transform flex items-center justify-center gap-3 hover:bg-orange-50"
-              >
-                <ThumbsUp className="w-5 h-5" /> Rate Experience
-              </button>
-            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Nav Bar */}
-      {view !== 'auth' && view !== 'tracking' && view !== 'cefane' && view !== 'orderDetails' && (
-        <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-2xl border-t border-gray-100 px-8 py-5 flex justify-between items-center z-50 shadow-2xl">
-          <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'home' ? 'text-orange-600' : 'text-gray-300'}`}>
-            <HomeIcon className="w-6 h-6" />
-            <span className="text-[10px] font-black uppercase tracking-tighter">Home</span>
-          </button>
-          <button onClick={() => setView('marketplace')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'marketplace' ? 'text-orange-600' : 'text-gray-300'}`}>
-            <Search className="w-6 h-6" />
-            <span className="text-[10px] font-black uppercase tracking-tighter">Browse</span>
-          </button>
-          <button onClick={() => setView('cart')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'cart' ? 'text-orange-600' : 'text-gray-300'} relative`}>
-            <ShoppingCart className="w-6 h-6" />
-            {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black animate-bounce-short">{cart.length}</span>}
-            <span className="text-[10px] font-black uppercase tracking-tighter">Cart</span>
-          </button>
-          <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'profile' || view === 'orderHistory' ? 'text-orange-600' : 'text-gray-300'}`}>
-            <UserIcon className="w-6 h-6" />
-            <span className="text-[10px] font-black uppercase tracking-tighter">Profile</span>
-          </button>
-        </nav>
-      )}
+        {/* Feedback Modal */}
+        {showFeedbackModal && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/70 backdrop-blur-lg animate-fadeIn">
+            <div className="bg-white w-full max-w-sm rounded-[48px] p-10 shadow-2xl animate-scaleIn text-center">
+              <div className="w-20 h-20 bg-orange-100 rounded-[28px] flex items-center justify-center mx-auto mb-6 transform -rotate-3">
+                <Star className="text-orange-600 w-10 h-10 fill-orange-600" />
+              </div>
+              <h3 className="text-3xl font-black tracking-tight mb-2">Service Delivered!</h3>
+              <p className="text-gray-500 font-medium mb-8">How was your experience with Amana Rides?</p>
+              
+              <div className="flex justify-center gap-2 mb-8">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <button 
+                    key={s} 
+                    onClick={() => setRating(s)}
+                    className={`p-1 transition-all transform active:scale-90 ${rating >= s ? 'scale-110' : 'scale-100 opacity-30'}`}
+                  >
+                    <Star className={`w-10 h-10 ${rating >= s ? 'text-orange-500 fill-orange-500' : 'text-gray-300'}`} />
+                  </button>
+                ))}
+              </div>
 
-      {/* Marketplace & Vendor flows re-included for stability */}
-      {view === 'marketplace' && (
-        <div className="p-5 pb-24 space-y-6 overflow-y-auto animate-fadeIn">
-          <div className="flex items-center">
-            <button onClick={() => setView('home')} className="mr-3 p-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
-            <h2 className="text-2xl font-black tracking-tight">Marketplace</h2>
+              <textarea 
+                placeholder="Leave a comment (optional)..."
+                className="w-full bg-gray-50 rounded-3xl p-5 border-none focus:ring-4 focus:ring-orange-100 outline-none font-medium text-sm min-h-[100px] resize-none mb-8"
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+              />
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={submitFeedback}
+                  disabled={rating === 0}
+                  className="w-full py-5 bg-orange-600 text-white font-black rounded-[32px] shadow-xl active:scale-95 transition-transform disabled:opacity-50 disabled:grayscale"
+                >
+                  Submit Feedback
+                </button>
+                <button 
+                  onClick={() => { setShowFeedbackModal(false); setView('home'); }}
+                  className="w-full py-3 text-gray-400 font-bold text-sm tracking-tight"
+                >
+                  Maybe later
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="space-y-4">
-            {MOCK_VENDORS.map(v => (
-              <div key={v.id} onClick={() => { setSelectedVendor(v); setView('vendor'); }} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 cursor-pointer hover:border-orange-200 transition-all active:scale-[0.98]">
-                <img src={v.image} className="w-full h-44 object-cover" alt="" />
-                <div className="p-5 flex justify-between items-center">
-                  <div>
-                    <h4 className="font-black text-lg">{v.name}</h4>
-                    <p className="text-xs text-gray-400 font-medium">{v.category} • {v.deliveryTime}</p>
+        )}
+
+        {showCefaneConfirm && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-fadeIn">
+            <div className="bg-white w-full rounded-[48px] p-10 shadow-2xl animate-scaleIn max-h-[90vh] overflow-y-auto no-scrollbar">
+              <div className="text-center mb-8">
+                <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-5">
+                  <CheckCircle2 className="text-orange-600 w-10 h-10" />
+                </div>
+                <h3 className="text-3xl font-black tracking-tight">{editingOrderId ? 'Confirm Updates' : 'Review Errand'}</h3>
+                <p className="text-gray-500 font-medium mt-1">Ready to send your request?</p>
+              </div>
+              
+              <div className="space-y-6">
+                {cefaneInput.trim() && (
+                  <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100">
+                    <div className="flex items-center gap-3 mb-3">
+                      <ClipboardList className="w-4 h-4 text-orange-600" />
+                      <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Shopping Items</h4>
+                    </div>
+                    <p className="text-gray-800 font-medium text-sm leading-relaxed whitespace-pre-wrap italic">"{cefaneInput}"</p>
                   </div>
-                  <div className="bg-orange-50 px-3 py-1.5 rounded-xl text-orange-600 font-black text-sm flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-orange-600" /> {v.rating}
+                )}
+
+                {cefaneImage && (
+                  <div className="bg-orange-50/50 p-6 rounded-[32px] border border-orange-100/50">
+                    <div className="flex items-center gap-3 mb-3">
+                      <ImageIcon className="w-4 h-4 text-orange-600" />
+                      <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Attached List Photo</h4>
+                    </div>
+                    <img src={cefaneImage} className="w-full h-44 object-cover rounded-2xl shadow-md border-2 border-white" alt="List Preview" />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Wallet className="w-4 h-4 text-green-600" />
+                      <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Budget</h4>
+                    </div>
+                    <p className="text-gray-900 font-black">{cefaneBudget ? `$${parseFloat(cefaneBudget).toFixed(2)}` : 'Unlimited'}</p>
+                  </div>
+                  <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100">
+                    <div className="flex items-center gap-3 mb-2">
+                      <MapPin className="w-4 h-4 text-red-600" />
+                      <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">To</h4>
+                    </div>
+                    <p className="text-gray-900 font-black text-xs truncate">{currentAddress?.label || 'Unknown'}</p>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {view === 'vendor' && selectedVendor && (
-        <div className="pb-24 overflow-y-auto animate-fadeIn bg-white h-full">
-          <div className="h-72 relative">
-             <img src={selectedVendor.image} className="w-full h-full object-cover" alt="" />
-             <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent"></div>
-             <button onClick={() => setView('marketplace')} className="absolute top-6 left-6 bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl active:scale-95 transition-transform">
-               <ArrowLeft className="w-6 h-6" />
-             </button>
-          </div>
-          <div className="bg-white rounded-t-[48px] -mt-12 relative p-8 shadow-2xl border-t border-gray-50">
-            <div className="flex justify-between items-start mb-2">
-              <h2 className="text-3xl font-black tracking-tight">{selectedVendor.name}</h2>
-              <div className="bg-orange-600 text-white px-3 py-1.5 rounded-2xl font-black text-sm">★ {selectedVendor.rating}</div>
+              <div className="mt-10 flex flex-col gap-3">
+                <button 
+                  onClick={processCefaneRequest}
+                  disabled={isProcessingCefane}
+                  className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                  {isProcessingCefane ? 'Connecting...' : (editingOrderId ? 'Update Request' : 'Confirm & Place Request')} <Send className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={() => setShowCefaneConfirm(false)}
+                  className="w-full py-4 text-gray-400 font-black tracking-tight"
+                >
+                  Wait, I need to edit
+                </button>
+              </div>
             </div>
-            <p className="text-gray-400 font-medium mb-8 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> 
-              {selectedVendor.category} • Fast Delivery
-            </p>
-            
-            <div className="space-y-5">
-              <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1">Popular Items</h3>
-              {MOCK_PRODUCTS.filter(p => p.vendorId === selectedVendor.id).map(p => (
-                <div key={p.id} className="flex gap-5 items-center bg-gray-50/50 p-4 rounded-[32px] border border-gray-100/50 hover:bg-orange-50/30 transition-colors">
-                  <img src={p.image} className="w-24 h-24 rounded-3xl object-cover shadow-md border-2 border-white" alt="" />
-                  <div className="flex-1">
-                    <h4 className="font-bold text-gray-900">{p.name}</h4>
-                    <p className="text-xs text-gray-400 line-clamp-1 mb-2">{p.description}</p>
-                    <p className="text-orange-600 font-black text-lg">${p.price}</p>
+          </div>
+        )}
+
+        {view === 'tracking' && activeOrder && (
+          <div className="h-full flex flex-col bg-white overflow-hidden animate-fadeIn">
+            <div className="flex-1 relative">
+              <MapContainer order={activeOrder} onProgressUpdate={handleProgressUpdate} />
+              <button 
+                onClick={() => setView('home')} 
+                className="absolute top-6 left-6 bg-white p-4 rounded-2xl shadow-2xl z-20 border border-gray-100 active:scale-95"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              {activeOrder.status === OrderStatus.OUT_FOR_DELIVERY && (
+                <div className="absolute top-6 right-6 bg-orange-600 text-white px-4 py-2 rounded-xl shadow-xl z-20 font-black text-xs animate-pulse">
+                  LIVE TRACKING
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-t-[48px] -mt-10 relative z-30 p-8 shadow-[0_-20px_60px_rgba(0,0,0,0.15)] flex flex-col gap-6">
+              <div className="w-16 h-1.5 bg-gray-100 rounded-full mx-auto" />
+              
+              <div className="flex justify-between items-start">
+                {activeOrder.status === OrderStatus.OUT_FOR_DELIVERY ? (
+                  <div className="bg-orange-50 p-5 rounded-[32px] border border-orange-100 flex items-center gap-4 animate-fadeIn w-full">
+                    <img src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&h=100&fit=crop" className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md" alt="Rider" />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-black text-orange-900">Kofi Mensah</h4>
+                        <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg shadow-sm">
+                          <Star className="w-3 h-3 text-orange-500 fill-orange-500" />
+                          <span className="text-[10px] font-black">4.9</span>
+                        </div>
+                      </div>
+                      <p className="text-orange-700/70 text-xs font-bold mt-0.5">Honda Super Cub • GW-402-23</p>
+                      <div className="flex gap-2 mt-2">
+                        <button className="bg-white p-2 rounded-xl shadow-sm text-orange-600 active:scale-90 transition-transform"><Phone className="w-4 h-4" /></button>
+                        <button className="bg-white p-2 rounded-xl shadow-sm text-orange-600 active:scale-90 transition-transform"><MessageSquare className="w-4 h-4" /></button>
+                      </div>
+                    </div>
                   </div>
-                  <button onClick={() => addToCart(p, selectedVendor)} className="bg-orange-600 text-white p-4 rounded-2xl shadow-xl active:scale-95 transition-transform hover:bg-orange-700">
-                    <Plus className="w-6 h-6" />
-                  </button>
+                ) : (
+                  <>
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-orange-600 tracking-widest bg-orange-50 px-3 py-1 rounded-lg">
+                        {activeOrder.type} Request
+                      </span>
+                      <h3 className="text-3xl font-black text-gray-900 mt-3 tracking-tight">{activeOrder.status}</h3>
+                      <p className="text-gray-400 font-medium mt-1">Order ID: #{activeOrder.id.toUpperCase()}</p>
+                    </div>
+                    <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center shadow-inner">
+                      <Navigation className="w-10 h-10 text-orange-600 animate-bounce-short" />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {activeOrder.type === 'Cefane' && (activeOrder.status === OrderStatus.PENDING || activeOrder.status === OrderStatus.ACCEPTED) && (
+                <button 
+                  onClick={() => startEditingCefane(activeOrder)}
+                  className="w-full flex items-center justify-center gap-3 py-4 bg-orange-50 text-orange-700 font-black rounded-[24px] border border-orange-100 active:scale-95 transition-transform"
+                >
+                  <Edit2 className="w-5 h-5" /> Edit Errand List
+                </button>
+              )}
+
+              <div className="space-y-4">
+                <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden flex">
+                  {Object.values(OrderStatus).map((status, idx) => {
+                    const statuses = Object.values(OrderStatus);
+                    const currentIdx = statuses.indexOf(activeOrder.status);
+                    const isPast = idx <= currentIdx;
+                    return <div key={status} className={`h-full flex-1 transition-all duration-700 ${isPast ? 'bg-orange-500' : 'bg-transparent'}`} />;
+                  })}
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="text-xs font-bold text-gray-800">
+                    {activeOrder.status === OrderStatus.DELIVERED ? "Enjoy your items!" : 
+                    `Next: ${Object.values(OrderStatus)[Object.values(OrderStatus).indexOf(activeOrder.status) + 1] || 'Done'}`}
+                  </p>
+                  <div className="flex items-center gap-2 bg-gray-900 text-white px-3 py-1.5 rounded-xl shadow-lg">
+                    <Clock className="w-3 h-3" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">{activeOrder.status === OrderStatus.DELIVERED ? 'Arrived' : `ETA: ${eta} mins`}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={simulateProgress}
+                  className="flex-1 bg-orange-50 text-orange-600 font-black py-4 rounded-2xl border border-orange-100 active:scale-95 transition-transform"
+                >
+                  Next Status
+                </button>
+                <button 
+                  onClick={() => setView('home')}
+                  className="flex-1 bg-gray-900 text-white font-black py-4 rounded-2xl active:scale-95 transition-transform"
+                >
+                  Return Home
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'orderHistory' && (
+          <div className="p-6 pb-24 h-full space-y-6 overflow-y-auto animate-fadeIn no-scrollbar">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setView('profile')} className="p-2 bg-white rounded-xl shadow-sm border border-gray-100">
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <h2 className="text-2xl font-black">Order History</h2>
+            </div>
+            
+            {orders.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 opacity-20">
+                <Clock className="w-20 h-20 mb-4" />
+                <p className="font-bold">No orders yet</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {orders.map(order => (
+                  <div 
+                    key={order.id} 
+                    onClick={() => { setSelectedOrderId(order.id); setView('orderDetails'); }}
+                    className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm flex items-center justify-between cursor-pointer hover:scale-[1.01] transition-all"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`p-3 rounded-2xl ${order.type === 'Cefane' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
+                        {order.type === 'Cefane' ? <Package className="w-6 h-6" /> : <ShoppingBag className="w-6 h-6" />}
+                      </div>
+                      <div>
+                        <h4 className="font-black text-sm">{order.type} #{order.id.slice(-4).toUpperCase()}</h4>
+                        <p className="text-[10px] text-gray-400 font-bold">{new Date(order.date).toLocaleDateString()}</p>
+                        <div className="mt-1">
+                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${order.status === OrderStatus.DELIVERED ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {order.status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black text-sm">${(order.total + order.deliveryFee).toFixed(2)}</p>
+                      <ChevronRight className="w-4 h-4 text-gray-300 ml-auto mt-1" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === 'orderDetails' && selectedOrder && (
+          <div className="flex flex-col h-full bg-white animate-fadeIn overflow-y-auto no-scrollbar pb-10">
+            <div className="p-6 flex items-center justify-between border-b border-gray-50">
+              <button onClick={() => setView('orderHistory')} className="p-2 bg-gray-50 rounded-xl">
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <h3 className="text-lg font-black tracking-tight">Order Details</h3>
+              <div className="w-10" /> {/* Spacer */}
+            </div>
+
+            <div className="p-8 space-y-8">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Transaction ID</p>
+                  <h4 className="text-xl font-black">#{selectedOrder.id.toUpperCase()}</h4>
+                  <p className="text-sm text-gray-500 mt-1">{new Date(selectedOrder.date).toLocaleString()}</p>
+                </div>
+                <div className={`px-4 py-2 rounded-2xl font-black text-xs ${selectedOrder.status === OrderStatus.DELIVERED ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700 animate-pulse'}`}>
+                  {selectedOrder.status.toUpperCase()}
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 space-y-4 shadow-sm">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-orange-600">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery Address</p>
+                    <p className="text-sm font-bold text-gray-800">{selectedOrder.deliveryAddress}</p>
+                  </div>
+                </div>
+              </div>
+
+              {selectedOrder.type === 'Cefane' && (selectedOrder.status === OrderStatus.PENDING || selectedOrder.status === OrderStatus.ACCEPTED) && (
+                <button 
+                  onClick={() => startEditingCefane(selectedOrder)}
+                  className="w-full flex items-center justify-center gap-3 py-5 bg-orange-600 text-white font-black rounded-[28px] shadow-xl active:scale-95 transition-transform"
+                >
+                  <Edit2 className="w-5 h-5" /> Edit Errand Details
+                </button>
+              )}
+
+              <div>
+                <h5 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4 ml-1">Order Summary</h5>
+                <div className="space-y-4">
+                  {selectedOrder.type === 'Marketplace' && selectedOrder.items?.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-4">
+                      <img src={item.product.image} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" />
+                      <div className="flex-1">
+                        <p className="font-bold text-sm">{item.product.name}</p>
+                        <p className="text-xs text-gray-400">Qty: {item.quantity}</p>
+                      </div>
+                      <p className="font-black text-sm">${(item.product.price * item.quantity).toFixed(2)}</p>
+                    </div>
+                  ))}
+                  
+                  {selectedOrder.type === 'Cefane' && (
+                    <div className="p-5 bg-orange-50/50 rounded-3xl border border-orange-100/50 space-y-5">
+                      {selectedOrder.shoppingList && (
+                        <div>
+                          <div className="flex items-center gap-3 mb-2">
+                            <ClipboardList className="w-4 h-4 text-orange-600" />
+                            <p className="text-xs font-black text-orange-900">Requested Errand</p>
+                          </div>
+                          <p className="text-sm text-orange-800/80 italic leading-relaxed whitespace-pre-wrap font-medium">"{selectedOrder.shoppingList}"</p>
+                        </div>
+                      )}
+                      
+                      {selectedOrder.listImage && (
+                        <div>
+                          <div className="flex items-center gap-3 mb-2">
+                            <ImageIcon className="w-4 h-4 text-orange-600" />
+                            <p className="text-xs font-black text-orange-900 uppercase">Handwritten List Photo</p>
+                          </div>
+                          <img src={selectedOrder.listImage} className="w-full h-56 object-cover rounded-2xl shadow-xl border-4 border-white" alt="List" />
+                        </div>
+                      )}
+
+                      {selectedOrder.budgetLimit && (
+                        <p className="text-[10px] font-black mt-3 text-orange-700 uppercase tracking-widest">Budget Limit: ${selectedOrder.budgetLimit}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-6 space-y-3">
+                <div className="flex justify-between items-center text-gray-400 text-sm font-bold">
+                  <span>Subtotal</span>
+                  <span>${selectedOrder.total.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center text-gray-400 text-sm font-bold">
+                  <span>Delivery Fee</span>
+                  <span>${selectedOrder.deliveryFee.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-lg font-black">Total Price</span>
+                  <span className="text-2xl font-black text-orange-600">${(selectedOrder.total + selectedOrder.deliveryFee).toFixed(2)}</span>
+                </div>
+              </div>
+
+              {selectedOrder.status !== OrderStatus.DELIVERED && (
+                <button 
+                  onClick={() => { setActiveOrderId(selectedOrder.id); setView('tracking'); }}
+                  className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3"
+                >
+                  <Truck className="w-5 h-5" /> View Live Tracking
+                </button>
+              )}
+              
+              {selectedOrder.status === OrderStatus.DELIVERED && (
+                <button 
+                  onClick={() => setShowFeedbackModal(true)}
+                  className="w-full py-5 bg-white text-orange-600 border-2 border-orange-600 font-black rounded-3xl active:scale-95 transition-transform flex items-center justify-center gap-3 hover:bg-orange-50"
+                >
+                  <ThumbsUp className="w-5 h-5" /> Rate Experience
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Nav Bar */}
+        {view !== 'auth' && view !== 'tracking' && view !== 'cefane' && view !== 'orderDetails' && (
+          <nav className="absolute bottom-0 left-0 w-full bg-white/80 backdrop-blur-2xl border-t border-gray-100 px-8 py-5 flex justify-between items-center z-50">
+            <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'home' ? 'text-orange-600' : 'text-gray-300'}`}>
+              <HomeIcon className="w-6 h-6" />
+              <span className="text-[10px] font-black uppercase tracking-tighter">Home</span>
+            </button>
+            <button onClick={() => setView('marketplace')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'marketplace' ? 'text-orange-600' : 'text-gray-300'}`}>
+              <Search className="w-6 h-6" />
+              <span className="text-[10px] font-black uppercase tracking-tighter">Browse</span>
+            </button>
+            <button onClick={() => setView('cart')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'cart' ? 'text-orange-600' : 'text-gray-300'} relative`}>
+              <ShoppingCart className="w-6 h-6" />
+              {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black animate-bounce-short">{cart.length}</span>}
+              <span className="text-[10px] font-black uppercase tracking-tighter">Cart</span>
+            </button>
+            <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1.5 transition-colors ${view === 'profile' || view === 'orderHistory' ? 'text-orange-600' : 'text-gray-300'}`}>
+              <UserIcon className="w-6 h-6" />
+              <span className="text-[10px] font-black uppercase tracking-tighter">Profile</span>
+            </button>
+          </nav>
+        )}
+
+        {/* Marketplace Flow */}
+        {view === 'marketplace' && (
+          <div className="p-5 pb-24 h-full space-y-6 overflow-y-auto animate-fadeIn no-scrollbar">
+            <div className="flex items-center">
+              <button onClick={() => setView('home')} className="mr-3 p-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
+              <h2 className="text-2xl font-black tracking-tight">Marketplace</h2>
+            </div>
+            <div className="space-y-4">
+              {MOCK_VENDORS.map(v => (
+                <div key={v.id} onClick={() => { setSelectedVendor(v); setView('vendor'); }} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 cursor-pointer hover:border-orange-200 transition-all active:scale-[0.98]">
+                  <img src={v.image} className="w-full h-44 object-cover" alt="" />
+                  <div className="p-5 flex justify-between items-center">
+                    <div>
+                      <h4 className="font-black text-lg">{v.name}</h4>
+                      <p className="text-xs text-gray-400 font-medium">{v.category} • {v.deliveryTime}</p>
+                    </div>
+                    <div className="bg-orange-50 px-3 py-1.5 rounded-xl text-orange-600 font-black text-sm flex items-center gap-1">
+                      <Star className="w-4 h-4 fill-orange-600" /> {v.rating}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {view === 'profile' && user && (
-        <div className="p-8 space-y-10 animate-fadeIn overflow-y-auto pb-24 h-full">
-          <div className="flex items-center gap-6">
-            <div className="w-24 h-24 rounded-[36px] overflow-hidden shadow-2xl border-4 border-white transform -rotate-3">
-              <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop" className="w-full h-full object-cover" alt="" />
-            </div>
-            <div>
-              <h2 className="text-3xl font-black tracking-tight">{user.name}</h2>
-              <p className="text-gray-400 font-medium">{user.email}</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-             <div 
-               onClick={() => setView('orderHistory')}
-               className="flex items-center justify-between p-6 bg-white rounded-[32px] shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-all hover:scale-[1.02]"
-             >
-               <div className="flex items-center gap-5">
-                 <div className="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center text-orange-600"><Clock /></div>
-                 <div>
-                    <span className="font-black text-gray-800 block">Order History</span>
-                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{orders.length} orders total</span>
-                 </div>
-               </div>
-               <ChevronRight className="w-5 h-5 text-gray-300" />
-             </div>
-
-             {[
-               { icon: <MapPin />, label: "Saved Addresses", val: `${savedAddresses.length} saved`, onClick: () => setShowAddressPicker(true), color: 'bg-blue-100 text-blue-600' },
-               { icon: <AlertCircle />, label: "Help & Support", val: "24/7", onClick: () => {}, color: 'bg-green-100 text-green-600' },
-             ].map((item, i) => (
-               <div key={i} onClick={item.onClick} className="flex items-center justify-between p-6 bg-white rounded-[32px] shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-all hover:scale-[1.02]">
-                 <div className="flex items-center gap-5">
-                   <div className={`w-12 h-12 ${item.color} rounded-2xl flex items-center justify-center`}>{item.icon}</div>
-                   <div>
-                      <span className="font-black text-gray-800 block">{item.label}</span>
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.val}</span>
-                   </div>
-                 </div>
-                 <ChevronRight className="w-5 h-5 text-gray-300" />
-               </div>
-             ))}
-          </div>
-
-          <button 
-            onClick={() => {setUser(null); setView('auth');}}
-            className="w-full flex items-center justify-center gap-3 py-5 bg-red-50 text-red-600 font-black rounded-[28px] border border-red-100 active:scale-95 transition-transform hover:bg-red-100"
-          >
-            <LogOut className="w-5 h-5" /> Sign Out
-          </button>
-        </div>
-      )}
-
-      {view === 'cart' && (
-        <div className="p-5 flex flex-col h-full bg-white overflow-y-auto animate-fadeIn">
-          <div className="flex items-center mb-8 px-2">
-            <button onClick={() => setView('home')} className="mr-4 p-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
-            <h2 className="text-2xl font-black tracking-tight">Shopping Bag</h2>
-          </div>
-          {cart.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center opacity-30">
-              <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6">
-                <ShoppingCart className="w-16 h-16" />
-              </div>
-              <p className="font-black text-xl">Your bag is empty</p>
-              <button 
-                onClick={() => setView('marketplace')}
-                className="mt-6 text-orange-600 font-black text-sm uppercase tracking-widest"
-              >
-                Start Shopping
+        {view === 'vendor' && selectedVendor && (
+          <div className="pb-24 overflow-y-auto animate-fadeIn bg-white h-full no-scrollbar">
+            <div className="h-72 relative">
+              <img src={selectedVendor.image} className="w-full h-full object-cover" alt="" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent"></div>
+              <button onClick={() => setView('marketplace')} className="absolute top-6 left-6 bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl active:scale-95 transition-transform">
+                <ArrowLeft className="w-6 h-6" />
               </button>
             </div>
-          ) : (
-            <div className="flex-1 flex flex-col px-2">
-               <div className="space-y-5 flex-1 pb-10">
-                 {cart.map(item => (
-                   <div key={item.product.id} className="flex gap-5 p-5 bg-gray-50 rounded-[32px] items-center border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-t-[48px] -mt-12 relative p-8 shadow-2xl border-t border-gray-50">
+              <div className="flex justify-between items-start mb-2">
+                <h2 className="text-3xl font-black tracking-tight">{selectedVendor.name}</h2>
+                <div className="bg-orange-600 text-white px-3 py-1.5 rounded-2xl font-black text-sm">★ {selectedVendor.rating}</div>
+              </div>
+              <p className="text-gray-400 font-medium mb-8 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> 
+                {selectedVendor.category} • Fast Delivery
+              </p>
+              
+              <div className="space-y-5">
+                <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1">Popular Items</h3>
+                {MOCK_PRODUCTS.filter(p => p.vendorId === selectedVendor.id).map(p => (
+                  <div key={p.id} className="flex gap-5 items-center bg-gray-50/50 p-4 rounded-[32px] border border-gray-100/50 hover:bg-orange-50/30 transition-colors">
+                    <img src={p.image} className="w-24 h-24 rounded-3xl object-cover shadow-md border-2 border-white" alt="" />
+                    <div className="flex-1">
+                      <h4 className="font-bold text-gray-900">{p.name}</h4>
+                      <p className="text-xs text-gray-400 line-clamp-1 mb-2">{p.description}</p>
+                      <p className="text-orange-600 font-black text-lg">${p.price}</p>
+                    </div>
+                    <button onClick={() => addToCart(p, selectedVendor)} className="bg-orange-600 text-white p-4 rounded-2xl shadow-xl active:scale-95 transition-transform hover:bg-orange-700">
+                      <Plus className="w-6 h-6" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'profile' && user && (
+          <div className="p-8 space-y-10 animate-fadeIn overflow-y-auto no-scrollbar pb-24 h-full">
+            <div className="flex items-center gap-6">
+              <div className="w-24 h-24 rounded-[36px] overflow-hidden shadow-2xl border-4 border-white transform -rotate-3">
+                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop" className="w-full h-full object-cover" alt="" />
+              </div>
+              <div>
+                <h2 className="text-3xl font-black tracking-tight">{user.name}</h2>
+                <p className="text-gray-400 font-medium">{user.email}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div 
+                onClick={() => setView('orderHistory')}
+                className="flex items-center justify-between p-6 bg-white rounded-[32px] shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-all hover:scale-[1.02]"
+              >
+                <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center text-orange-600"><Clock /></div>
+                  <div>
+                    <span className="font-black text-gray-800 block">Order History</span>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{orders.length} orders total</span>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-300" />
+              </div>
+
+              {[
+                { icon: <MapPin />, label: "Saved Addresses", val: `${savedAddresses.length} saved`, onClick: () => setShowAddressPicker(true), color: 'bg-blue-100 text-blue-600' },
+                { icon: <AlertCircle />, label: "Help & Support", val: "24/7", onClick: () => {}, color: 'bg-green-100 text-green-600' },
+              ].map((item, i) => (
+                <div key={i} onClick={item.onClick} className="flex items-center justify-between p-6 bg-white rounded-[32px] shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center gap-5">
+                    <div className={`w-12 h-12 ${item.color} rounded-2xl flex items-center justify-center`}>{item.icon}</div>
+                    <div>
+                      <span className="font-black text-gray-800 block">{item.label}</span>
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.val}</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-gray-300" />
+                </div>
+              ))}
+            </div>
+
+            <button 
+              onClick={() => {setUser(null); setView('auth');}}
+              className="w-full flex items-center justify-center gap-3 py-5 bg-red-50 text-red-600 font-black rounded-[28px] border border-red-100 active:scale-95 transition-transform hover:bg-red-100"
+            >
+              <LogOut className="w-5 h-5" /> Sign Out
+            </button>
+          </div>
+        )}
+
+        {view === 'cart' && (
+          <div className="p-5 flex flex-col h-full bg-white overflow-y-auto no-scrollbar animate-fadeIn">
+            <div className="flex items-center mb-8 px-2">
+              <button onClick={() => setView('home')} className="mr-4 p-2 bg-gray-50 rounded-xl"><ArrowLeft className="w-6 h-6" /></button>
+              <h2 className="text-2xl font-black tracking-tight">Shopping Bag</h2>
+            </div>
+            {cart.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center opacity-30">
+                <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+                  <ShoppingCart className="w-16 h-16" />
+                </div>
+                <p className="font-black text-xl">Your bag is empty</p>
+                <button 
+                  onClick={() => setView('marketplace')}
+                  className="mt-6 text-orange-600 font-black text-sm uppercase tracking-widest"
+                >
+                  Start Shopping
+                </button>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col px-2 h-full">
+                <div className="space-y-5 flex-1 pb-10">
+                  {cart.map(item => (
+                    <div key={item.product.id} className="flex gap-5 p-5 bg-gray-50 rounded-[32px] items-center border border-gray-100 shadow-sm">
                       <img src={item.product.image} className="w-20 h-20 rounded-2xl object-cover shadow-md border border-white" alt="" />
                       <div className="flex-1">
                         <h4 className="font-black text-gray-900">{item.product.name}</h4>
@@ -1181,11 +1227,11 @@ const App: React.FC = () => {
                         <span className="font-black text-sm w-4 text-center">{item.quantity}</span>
                         <button onClick={() => addToCart(item.product, item.vendor)} className="p-1 hover:text-orange-600 transition-colors"><Plus className="w-4 h-4" /></button>
                       </div>
-                   </div>
-                 ))}
-               </div>
-               
-               <div className="sticky bottom-0 bg-white pt-6 pb-24 space-y-4 border-t border-gray-50">
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="mt-auto bg-white pt-6 pb-24 space-y-4 border-t border-gray-50">
                   <div className="flex justify-between items-center text-gray-400 font-bold">
                     <span className="text-sm">Subtotal</span>
                     <span className="text-sm">${cart.reduce((a,b)=>a+(b.product.price*b.quantity),0).toFixed(2)}</span>
@@ -1204,27 +1250,32 @@ const App: React.FC = () => {
                   >
                     Confirm Checkout <CheckCircle2 className="w-6 h-6" />
                   </button>
-               </div>
-            </div>
-          )}
-        </div>
-      )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-      {/* Global Animations */}
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes scaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .animate-fadeIn { animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-scaleIn { animation: scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-slideUp { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-bounce-short { animation: bounce-short 1.5s ease-in-out infinite; }
-        @keyframes bounce-short { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-        .leaflet-container { font-family: inherit; }
-        ::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        * { -webkit-tap-highlight-color: transparent; }
-      `}</style>
+        {/* Global Animations & Styles - Moved inside root container to fix JSX context errors */}
+        <style>{`
+          @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+          @keyframes scaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+          @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+          .animate-fadeIn { animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+          .animate-scaleIn { animation: scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+          .animate-slideUp { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+          .animate-bounce-short { animation: bounce-short 1.5s ease-in-out infinite; }
+          @keyframes bounce-short { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+          .leaflet-container { font-family: inherit; }
+          ::-webkit-scrollbar { display: none; }
+          .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+          * { -webkit-tap-highlight-color: transparent; }
+          @media (max-width: 640px) {
+            .sm\\:h-\\[850px\\] { height: 100vh !important; }
+            .sm\\:rounded-\\[48px\\] { border-radius: 0 !important; }
+          }
+        `}</style>
+      </div>
     </div>
   );
 };
