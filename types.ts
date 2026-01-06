@@ -12,6 +12,8 @@ export type Address = {
   label: string;
   details: string;
   isDefault: boolean;
+  lat?: number;
+  lng?: number;
 };
 
 export type Category = 'Restaurants' | 'Supermarkets' | 'Pharmacies' | 'Retail stores';
@@ -62,6 +64,7 @@ export type Order = {
   receiptImage?: string;
   budgetLimit?: number;
   deliveryAddressId?: string;
+  riderLocation?: [number, number];
 };
 
 export type AppView = 'home' | 'marketplace' | 'vendor' | 'cefane' | 'cart' | 'tracking' | 'profile' | 'auth';
