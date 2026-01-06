@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ShoppingBag, 
@@ -25,7 +26,10 @@ import {
   Wallet,
   Phone,
   Receipt,
-  ExternalLink
+  ExternalLink,
+  Map as MapIcon,
+  X,
+  ThumbsUp
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -35,7 +39,8 @@ import {
   Product, 
   CartItem, 
   Order, 
-  OrderStatus 
+  OrderStatus,
+  Address
 } from './types';
 
 // Declare Leaflet global
@@ -55,6 +60,7 @@ const MOCK_PRODUCTS: Product[] = [
 ];
 
 const App: React.FC = () => {
+  const [showSplash, setShowSplash] = useState(true);
   const [view, setView] = useState<AppView>('auth');
   const [user, setUser] = useState<User | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -66,10 +72,31 @@ const App: React.FC = () => {
   const [cefaneBudget, setCefaneBudget] = useState('');
   const [isProcessingCefane, setIsProcessingCefane] = useState(false);
   const [showCefaneConfirm, setShowCefaneConfirm] = useState(false);
+  const [showAddressPicker, setShowAddressPicker] = useState(false);
+  const [showNewAddressForm, setShowNewAddressForm] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [eta, setEta] = useState<number>(15);
+
+  const [rating, setRating] = useState(0);
+  const [feedbackText, setFeedbackText] = useState('');
+
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([
+    { id: 'addr1', label: 'Home', details: 'Main Street, Accra, Block 4B', isDefault: true },
+    { id: 'addr2', label: 'Work', details: 'Ring Road, Office Complex, Room 202', isDefault: false }
+  ]);
+  const [selectedAddressId, setSelectedAddressId] = useState('addr1');
+  
+  const [newAddrLabel, setNewAddrLabel] = useState('');
+  const [newAddrDetails, setNewAddrDetails] = useState('');
 
   const activeOrder = useMemo(() => orders.find(o => o.id === activeOrderId) || null, [orders, activeOrderId]);
   const selectedOrder = useMemo(() => orders.find(o => o.id === selectedOrderId) || null, [orders, selectedOrderId]);
+  const currentAddress = useMemo(() => savedAddresses.find(a => a.id === selectedAddressId), [savedAddresses, selectedAddressId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Map Component Logic
   const MapContainer = ({ order, onProgressUpdate }: { order: Order, onProgressUpdate: (progress: number) => void }) => {
@@ -153,7 +180,7 @@ const App: React.FC = () => {
         deliveryFee: 5.0, // Base errand fee
         shoppingList: cefaneInput,
         budgetLimit: cefaneBudget ? parseFloat(cefaneBudget) : undefined,
-        deliveryAddress: "Main Street, Accra",
+        deliveryAddress: currentAddress?.details || "Unknown Address",
       };
       
       setOrders(prev => [newOrder, ...prev]);
@@ -206,7 +233,7 @@ const App: React.FC = () => {
       total: subtotal,
       deliveryFee: 2.5,
       items: [...cart],
-      deliveryAddress: "Main Street, Accra",
+      deliveryAddress: currentAddress?.details || "Unknown Address",
       riderLocation: [5.6037, -0.1870]
     };
     setOrders(prev => [newOrder, ...prev]);
@@ -223,7 +250,11 @@ const App: React.FC = () => {
       const statuses = Object.values(OrderStatus);
       const currentIndex = statuses.indexOf(o.status);
       if (currentIndex < statuses.length - 1) {
-        return { ...o, status: statuses[currentIndex + 1] };
+        const nextStatus = statuses[currentIndex + 1];
+        if (nextStatus === OrderStatus.DELIVERED) {
+          setShowFeedbackModal(true);
+        }
+        return { ...o, status: nextStatus };
       }
       return o;
     }));
@@ -235,11 +266,51 @@ const App: React.FC = () => {
     setEta(remaining);
   };
 
+  const addNewAddress = () => {
+    if (!newAddrLabel.trim() || !newAddrDetails.trim()) return;
+    const newAddr: Address = {
+      id: `addr_${Date.now()}`,
+      label: newAddrLabel,
+      details: newAddrDetails,
+      isDefault: false
+    };
+    setSavedAddresses(prev => [...prev, newAddr]);
+    setSelectedAddressId(newAddr.id);
+    setNewAddrLabel('');
+    setNewAddrDetails('');
+    setShowNewAddressForm(false);
+  };
+
+  const submitFeedback = () => {
+    // In a real app, send rating and feedbackText to backend
+    setShowFeedbackModal(false);
+    setRating(0);
+    setFeedbackText('');
+    setView('home');
+  };
+
+  if (showSplash) {
+    return (
+      <div className="fixed inset-0 z-[1000] bg-orange-600 flex flex-col items-center justify-center p-6 text-white">
+        <div className="animate-scaleIn flex flex-col items-center">
+          <div className="w-24 h-24 bg-white rounded-[32px] flex items-center justify-center shadow-2xl mb-6 transform rotate-6">
+            <ShoppingBag className="text-orange-600 w-12 h-12" />
+          </div>
+          <h1 className="text-5xl font-black tracking-tighter mb-2">Amana Rides</h1>
+          <p className="text-orange-100 font-bold tracking-widest uppercase text-[10px]">Digital Marketplace & Errand</p>
+        </div>
+        <div className="absolute bottom-20">
+          <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto min-h-screen bg-gray-50 font-sans text-gray-900 shadow-2xl relative overflow-hidden flex flex-col">
       {/* Views */}
       {view === 'auth' && (
-        <div className="min-h-screen bg-orange-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="min-h-screen bg-orange-50 flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
           <div className="bg-white p-8 rounded-[40px] shadow-2xl max-w-sm w-full border border-orange-100">
             <div className="w-24 h-24 bg-orange-500 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl rotate-3">
               <ShoppingBag className="text-white w-12 h-12" />
@@ -269,13 +340,13 @@ const App: React.FC = () => {
       )}
 
       {view === 'home' && (
-        <div className="p-5 space-y-6 pb-24 overflow-y-auto">
+        <div className="p-5 space-y-6 pb-24 overflow-y-auto animate-fadeIn">
           <header className="flex items-center justify-between">
-            <div className="cursor-pointer">
+            <div className="cursor-pointer" onClick={() => setShowAddressPicker(true)}>
               <h2 className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Delivering to</h2>
               <div className="flex items-center text-gray-900 font-bold">
                 <MapPin className="w-4 h-4 text-orange-600 mr-1" />
-                <span className="text-sm">Main Street, Accra</span>
+                <span className="text-sm truncate max-w-[150px]">{currentAddress?.label || 'Select Address'}</span>
                 <ChevronRight className="w-3 h-3 ml-1 rotate-90" />
               </div>
             </div>
@@ -367,12 +438,17 @@ const App: React.FC = () => {
               <p className="text-orange-700/70 text-sm">Tell us the items, the store, and any specific preferences.</p>
             </div>
 
-            <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+            <div 
+              onClick={() => setShowAddressPicker(true)}
+              className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors"
+            >
               <MapPin className="text-orange-600 w-5 h-5" />
-              <div>
+              <div className="flex-1">
                 <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Delivery To</p>
-                <p className="text-sm font-bold text-gray-800">Main Street, Accra</p>
+                <p className="text-sm font-bold text-gray-800">{currentAddress?.label || 'Select Address'}</p>
+                <p className="text-[10px] text-gray-400 truncate max-w-[200px]">{currentAddress?.details}</p>
               </div>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
             </div>
 
             <div>
@@ -410,8 +486,140 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Address Picker Modal */}
+      {showAddressPicker && (
+        <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-md rounded-t-[48px] p-8 shadow-2xl animate-slideUp max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-2xl font-black tracking-tight">Your Addresses</h3>
+              <button onClick={() => setShowAddressPicker(false)} className="p-2 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar">
+              {savedAddresses.map(addr => (
+                <div 
+                  key={addr.id}
+                  onClick={() => { setSelectedAddressId(addr.id); setShowAddressPicker(false); }}
+                  className={`p-5 rounded-[28px] border-2 transition-all cursor-pointer flex items-center gap-4 ${selectedAddressId === addr.id ? 'border-orange-500 bg-orange-50' : 'border-gray-100 hover:border-orange-200 bg-white'}`}
+                >
+                  <div className={`p-3 rounded-2xl ${selectedAddressId === addr.id ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                    <HomeIcon className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <p className={`font-black text-sm ${selectedAddressId === addr.id ? 'text-orange-900' : 'text-gray-900'}`}>{addr.label}</p>
+                    <p className="text-[10px] text-gray-500 font-medium truncate max-w-[200px]">{addr.details}</p>
+                  </div>
+                  {selectedAddressId === addr.id && <CheckCircle2 className="w-5 h-5 text-orange-600" />}
+                </div>
+              ))}
+              
+              <button 
+                onClick={() => setShowNewAddressForm(true)}
+                className="w-full p-5 rounded-[28px] border-2 border-dashed border-gray-200 hover:border-orange-300 transition-all flex items-center justify-center gap-3 text-gray-400 font-bold"
+              >
+                <Plus className="w-5 h-5" /> Add New Address
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Address Form Modal */}
+      {showNewAddressForm && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white w-full rounded-[48px] p-10 shadow-2xl animate-scaleIn">
+            <h3 className="text-3xl font-black tracking-tight mb-2">New Address</h3>
+            <p className="text-gray-400 font-medium mb-8">Where should we deliver?</p>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Label</label>
+                <input 
+                  placeholder="e.g., Mom's House, Gym..."
+                  className="w-full bg-gray-50 rounded-2xl py-4 px-6 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold"
+                  value={newAddrLabel}
+                  onChange={(e) => setNewAddrLabel(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1 mb-2 block">Details</label>
+                <textarea 
+                  placeholder="House number, Street name, Landmark..."
+                  className="w-full bg-gray-50 rounded-2xl py-4 px-6 border-none focus:ring-4 focus:ring-orange-100 outline-none font-bold min-h-[100px] resize-none"
+                  value={newAddrDetails}
+                  onChange={(e) => setNewAddrDetails(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="mt-10 flex flex-col gap-3">
+              <button 
+                onClick={addNewAddress}
+                className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-transform"
+              >
+                Save & Select
+              </button>
+              <button 
+                onClick={() => setShowNewAddressForm(false)}
+                className="w-full py-4 text-gray-400 font-black tracking-tight"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/70 backdrop-blur-lg animate-fadeIn">
+          <div className="bg-white w-full max-w-sm rounded-[48px] p-10 shadow-2xl animate-scaleIn text-center">
+            <div className="w-20 h-20 bg-orange-100 rounded-[28px] flex items-center justify-center mx-auto mb-6 transform -rotate-3">
+              <Star className="text-orange-600 w-10 h-10 fill-orange-600" />
+            </div>
+            <h3 className="text-3xl font-black tracking-tight mb-2">Service Delivered!</h3>
+            <p className="text-gray-500 font-medium mb-8">How was your experience with Amana Rides?</p>
+            
+            <div className="flex justify-center gap-2 mb-8">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button 
+                  key={s} 
+                  onClick={() => setRating(s)}
+                  className={`p-1 transition-all transform active:scale-90 ${rating >= s ? 'scale-110' : 'scale-100 opacity-30'}`}
+                >
+                  <Star className={`w-10 h-10 ${rating >= s ? 'text-orange-500 fill-orange-500' : 'text-gray-300'}`} />
+                </button>
+              ))}
+            </div>
+
+            <textarea 
+              placeholder="Leave a comment (optional)..."
+              className="w-full bg-gray-50 rounded-3xl p-5 border-none focus:ring-4 focus:ring-orange-100 outline-none font-medium text-sm min-h-[100px] resize-none mb-8"
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+            />
+
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={submitFeedback}
+                disabled={rating === 0}
+                className="w-full py-5 bg-orange-600 text-white font-black rounded-[32px] shadow-xl active:scale-95 transition-transform disabled:opacity-50 disabled:grayscale"
+              >
+                Submit Feedback
+              </button>
+              <button 
+                onClick={() => { setShowFeedbackModal(false); setView('home'); }}
+                className="w-full py-3 text-gray-400 font-bold text-sm tracking-tight"
+              >
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCefaneConfirm && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-fadeIn">
           <div className="bg-white w-full rounded-[48px] p-10 shadow-2xl animate-scaleIn max-h-[90vh] overflow-y-auto">
             <div className="text-center mb-8">
               <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-5">
@@ -443,7 +651,7 @@ const App: React.FC = () => {
                     <MapPin className="w-4 h-4 text-red-600" />
                     <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Address</h4>
                   </div>
-                  <p className="text-gray-900 font-black text-xs truncate">Main Street, Accra</p>
+                  <p className="text-gray-900 font-black text-xs truncate">{currentAddress?.label || 'Unknown'}</p>
                 </div>
               </div>
               
@@ -473,7 +681,7 @@ const App: React.FC = () => {
       )}
 
       {view === 'tracking' && activeOrder && (
-        <div className="h-full flex flex-col bg-white overflow-hidden">
+        <div className="h-full flex flex-col bg-white overflow-hidden animate-fadeIn">
           <div className="flex-1 relative">
             <MapContainer order={activeOrder} onProgressUpdate={handleProgressUpdate} />
             <button 
@@ -565,7 +773,7 @@ const App: React.FC = () => {
       )}
 
       {view === 'orderHistory' && (
-        <div className="p-6 pb-24 space-y-6 overflow-y-auto">
+        <div className="p-6 pb-24 space-y-6 overflow-y-auto animate-fadeIn">
           <div className="flex items-center gap-4">
             <button onClick={() => setView('profile')} className="p-2 bg-white rounded-xl shadow-sm border border-gray-100">
               <ArrowLeft className="w-6 h-6" />
@@ -697,6 +905,15 @@ const App: React.FC = () => {
                  <Truck className="w-5 h-5" /> View Live Tracking
                </button>
             )}
+            
+            {selectedOrder.status === OrderStatus.DELIVERED && (
+              <button 
+                onClick={() => setShowFeedbackModal(true)}
+                className="w-full py-5 bg-white text-orange-600 border-2 border-orange-600 font-black rounded-3xl active:scale-95 transition-transform flex items-center justify-center gap-3"
+              >
+                <ThumbsUp className="w-5 h-5" /> Rate Experience
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -726,13 +943,13 @@ const App: React.FC = () => {
 
       {/* Re-implementing Marketplace and Vendor briefly for completeness */}
       {view === 'marketplace' && (
-        <div className="p-5 pb-24 space-y-6 overflow-y-auto">
+        <div className="p-5 pb-24 space-y-6 overflow-y-auto animate-fadeIn">
           <div className="flex items-center">
             <button onClick={() => setView('home')} className="mr-3"><ArrowLeft className="w-6 h-6" /></button>
             <h2 className="text-2xl font-black">All Vendors</h2>
           </div>
           {MOCK_VENDORS.map(v => (
-             <div key={v.id} onClick={() => { setSelectedVendor(v); setView('vendor'); }} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer">
+             <div key={v.id} onClick={() => { setSelectedVendor(v); setView('vendor'); }} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer hover:border-orange-200 transition-all">
                <img src={v.image} className="w-full h-40 object-cover" alt="" />
                <div className="p-4 flex justify-between items-center">
                  <div>
@@ -747,7 +964,7 @@ const App: React.FC = () => {
       )}
 
       {view === 'vendor' && selectedVendor && (
-        <div className="pb-24 overflow-y-auto">
+        <div className="pb-24 overflow-y-auto animate-fadeIn">
           <div className="h-64 relative">
              <img src={selectedVendor.image} className="w-full h-full object-cover" alt="" />
              <button onClick={() => setView('marketplace')} className="absolute top-6 left-6 bg-white p-3 rounded-2xl shadow-xl"><ArrowLeft className="w-6 h-6" /></button>
@@ -763,7 +980,7 @@ const App: React.FC = () => {
                     <h4 className="font-bold">{p.name}</h4>
                     <p className="text-orange-600 font-black">${p.price}</p>
                   </div>
-                  <button onClick={() => addToCart(p, selectedVendor)} className="bg-orange-600 text-white p-3 rounded-2xl shadow-xl"><Plus className="w-6 h-6" /></button>
+                  <button onClick={() => addToCart(p, selectedVendor)} className="bg-orange-600 text-white p-3 rounded-2xl shadow-xl active:scale-95 transition-transform"><Plus className="w-6 h-6" /></button>
                 </div>
               ))}
             </div>
@@ -796,10 +1013,10 @@ const App: React.FC = () => {
              </div>
 
              {[
-               { icon: <MapPin />, label: "Saved Addresses", val: "1 saved" },
-               { icon: <AlertCircle />, label: "Support", val: "24/7" },
+               { icon: <MapPin />, label: "Saved Addresses", val: `${savedAddresses.length} saved`, onClick: () => setShowAddressPicker(true) },
+               { icon: <AlertCircle />, label: "Support", val: "24/7", onClick: () => {} },
              ].map((item, i) => (
-               <div key={i} className="flex items-center justify-between p-5 bg-white rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors">
+               <div key={i} onClick={item.onClick} className="flex items-center justify-between p-5 bg-white rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors">
                  <div className="flex items-center gap-4">
                    <div className="text-orange-500">{item.icon}</div>
                    <span className="font-bold text-gray-800">{item.label}</span>
@@ -819,7 +1036,7 @@ const App: React.FC = () => {
       )}
 
       {view === 'cart' && (
-        <div className="p-5 flex flex-col h-full bg-white overflow-y-auto">
+        <div className="p-5 flex flex-col h-full bg-white overflow-y-auto animate-fadeIn">
           <div className="flex items-center mb-6">
             <button onClick={() => setView('home')} className="mr-3"><ArrowLeft className="w-6 h-6" /></button>
             <h2 className="text-2xl font-black">My Cart</h2>
@@ -839,9 +1056,9 @@ const App: React.FC = () => {
                       <p className="text-orange-600 font-black text-xs">${item.product.price}</p>
                     </div>
                     <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm">
-                      <button onClick={() => removeFromCart(item.product.id)}><Minus className="w-4 h-4" /></button>
+                      <button onClick={() => removeFromCart(item.product.id)} className="active:scale-90"><Minus className="w-4 h-4" /></button>
                       <span className="font-black text-xs">{item.quantity}</span>
-                      <button onClick={() => addToCart(item.product, item.vendor)}><Plus className="w-4 h-4" /></button>
+                      <button onClick={() => addToCart(item.product, item.vendor)} className="active:scale-90"><Plus className="w-4 h-4" /></button>
                     </div>
                  </div>
                ))}
@@ -859,12 +1076,15 @@ const App: React.FC = () => {
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-        .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
-        .animate-scaleIn { animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+        .animate-scaleIn { animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-slideUp { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         .animate-bounce-short { animation: bounce-short 1s ease-in-out infinite; }
         @keyframes bounce-short { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
         .leaflet-container { font-family: inherit; }
         ::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
     </div>
   );
