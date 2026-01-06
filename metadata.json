@@ -1,0 +1,8 @@
+{
+  "name": "Amana Rides",
+  "description": "A premium customer mobile application for marketplace shopping and personal errand services (Cefane Shopping).",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
