@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ShoppingBag, 
@@ -416,10 +415,10 @@ const App: React.FC = () => {
           <div className="bg-white w-full rounded-[48px] p-10 shadow-2xl animate-scaleIn max-h-[90vh] overflow-y-auto">
             <div className="text-center mb-8">
               <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-5">
-                <Package className="text-orange-600 w-10 h-10" />
+                <CheckCircle2 className="text-orange-600 w-10 h-10" />
               </div>
-              <h3 className="text-3xl font-black tracking-tight">Review Errand</h3>
-              <p className="text-gray-500 font-medium mt-1">Ready to send your request?</p>
+              <h3 className="text-3xl font-black tracking-tight">Confirm Request</h3>
+              <p className="text-gray-500 font-medium mt-1">Please verify your errand summary before we start shopping.</p>
             </div>
             
             <div className="space-y-6">
@@ -428,7 +427,7 @@ const App: React.FC = () => {
                   <ClipboardList className="w-4 h-4 text-orange-600" />
                   <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Shopping List</h4>
                 </div>
-                <p className="text-gray-800 font-medium text-sm leading-relaxed">"{cefaneInput}"</p>
+                <p className="text-gray-800 font-medium text-sm leading-relaxed whitespace-pre-wrap italic">"{cefaneInput}"</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -444,23 +443,29 @@ const App: React.FC = () => {
                     <MapPin className="w-4 h-4 text-red-600" />
                     <h4 className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Address</h4>
                   </div>
-                  <p className="text-gray-900 font-black text-xs line-clamp-1">Main St, Accra</p>
+                  <p className="text-gray-900 font-black text-xs truncate">Main Street, Accra</p>
                 </div>
+              </div>
+              
+              <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 flex items-start gap-3">
+                <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-blue-800 font-medium leading-tight">Once confirmed, your errand will be sent to the Amana Rides Super Admin for fulfillment.</p>
               </div>
             </div>
 
             <div className="mt-10 flex flex-col gap-3">
               <button 
                 onClick={processCefaneRequest}
-                className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-2"
+                disabled={isProcessingCefane}
+                className="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-3 disabled:opacity-50"
               >
-                Confirm & Send Request <Send className="w-5 h-5" />
+                {isProcessingCefane ? 'Sending...' : 'Confirm & Send Request'} <Send className="w-5 h-5" />
               </button>
               <button 
                 onClick={() => setShowCefaneConfirm(false)}
                 className="w-full py-4 text-gray-400 font-black tracking-tight"
               >
-                Wait, I need to edit
+                Go back & edit
               </button>
             </div>
           </div>
@@ -660,7 +665,7 @@ const App: React.FC = () => {
                       <ClipboardList className="w-4 h-4 text-orange-600" />
                       <p className="text-xs font-black text-orange-900">Requested Errand</p>
                     </div>
-                    <p className="text-sm text-orange-800/80 italic leading-relaxed">"{selectedOrder.shoppingList}"</p>
+                    <p className="text-sm text-orange-800/80 italic leading-relaxed whitespace-pre-wrap">"{selectedOrder.shoppingList}"</p>
                     {selectedOrder.budgetLimit && (
                        <p className="text-[10px] font-black mt-3 text-orange-700 uppercase tracking-widest">Budget Limit: ${selectedOrder.budgetLimit}</p>
                     )}
